@@ -1,0 +1,91 @@
+# Almacenamiento de objetos S3 (SeaweedFS). El Service se sigue llamando "minio"
+# para que la API y el worker no cambien: usan el cliente S3 contra minio:9000.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: s3-config
+  namespace: vibe
+data:
+  s3.json: |
+    {
+      "identities": [
+        {
+          "name": "vibe",
+          "credentials": [{"accessKey": "vibeadmin", "secretKey": "vibesecret123"}],
+          "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+        }
+      ]
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: vibe
+spec:
+  selector:
+    app: minio
+  ports:
+    - port: 9000
+      name: s3
+    - port: 9333
+      name: master
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: minio
+  namespace: vibe
+spec:
+  serviceName: minio
+  replicas: 1
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: seaweedfs
+          image: chrislusf/seaweedfs:latest
+          args:
+            - server
+            - -dir=/data
+            - -ip.bind=0.0.0.0
+            - -master.volumeSizeLimitMB=256
+            - -s3
+            - -s3.port=9000
+            - -s3.config=/etc/seaweedfs/s3.json
+          ports:
+            - containerPort: 9000
+            - containerPort: 9333
+          resources:
+            requests: { cpu: 200m, memory: 256Mi }
+            limits: { cpu: "1", memory: 1Gi }
+          readinessProbe:
+            tcpSocket: { port: 9000 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            tcpSocket: { port: 9000 }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: s3-config
+              mountPath: /etc/seaweedfs
+      volumes:
+        - name: s3-config
+          configMap:
+            name: s3-config
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 10Gi

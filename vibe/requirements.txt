@@ -1,0 +1,15 @@
+# Dependencias Python de TODO el proyecto (unión de api/ y worker/).
+# Solo hace falta instalarlas en tu Mac si quieres correr la API o el worker
+# fuera de Docker; tools/gen_audio.py y tools/seed.py usan solo la librería estándar.
+#
+#   python3 -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+#
+fastapi==0.115.12
+uvicorn[standard]==0.34.2
+python-multipart==0.0.20
+sqlalchemy==2.0.40
+psycopg[binary]==3.2.6
+minio==7.2.15
+redis==5.2.1
+prometheus-fastapi-instrumentator==7.1.0
+prometheus-client==0.21.1

@@ -1,0 +1,9 @@
+{
+  "identities": [
+    {
+      "name": "vibe",
+      "credentials": [{"accessKey": "vibeadmin", "secretKey": "vibesecret123"}],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

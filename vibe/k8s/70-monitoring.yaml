@@ -1,0 +1,32 @@
+# Aplicar DESPUÉS de instalar kube-prometheus-stack (make addons).
+# La etiqueta release=monitoring es la que el Prometheus del chart usa para descubrir monitores.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: api
+  namespace: vibe
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: worker
+  namespace: vibe
+  labels:
+    release: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: worker
+  endpoints:
+    - port: metrics
+      interval: 10s

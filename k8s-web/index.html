@@ -1,0 +1,261 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>k8s · arquitectura del cluster</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@500;600;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+:root{--bg:#f5f8fc;--card:#ffffff;--line:#dbe4f0;--text:#0f2545;--muted:#5b6e8c;--blue:#1d5fd6;--blue2:#3b82f6;--blue-soft:#e6efff;--ok:#1a9c5b;--warn:#d97706;--bad:#d93025;--mono:"IBM Plex Mono",Menlo,Consolas,monospace}
+*{box-sizing:border-box}[hidden]{display:none!important}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 "Manrope",system-ui,sans-serif}
+header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 28px;display:flex;align-items:center;gap:18px;position:sticky;top:0;z-index:5}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;letter-spacing:-.01em}
+.brand svg{width:36px;height:36px;color:var(--blue)}
+.right{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--ok)}.dot.bad{background:var(--bad)}
+nav{display:flex;gap:4px;padding:10px 28px 0;background:var(--card);border-bottom:1px solid var(--line);overflow:auto}
+nav button{border:0;background:none;padding:10px 14px;font:inherit;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
+nav button.on{color:var(--blue);border-color:var(--blue)}
+main{padding:22px 28px 40px;max-width:1500px;margin:0 auto}
+.err{background:#fdecea;border:1px solid #f5b5b0;color:var(--bad);padding:12px 16px;border-radius:10px;margin-bottom:16px;font-family:var(--mono);font-size:13px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:22px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
+.kpi b{display:block;font-size:24px;color:var(--blue);font-weight:800}.kpi small{color:var(--muted);text-transform:uppercase;letter-spacing:.06em;font-size:11px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px}
+h2{margin:0 0 12px;font-size:14px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:700}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.node{border:1px solid var(--line);border-radius:12px;padding:14px;background:#fbfdff}
+.node.down{border-color:var(--bad);background:#fff5f5}
+.node-h{display:flex;gap:8px;align-items:baseline;margin-bottom:8px}.node-h b{font-size:15px}.node-h em{font-style:normal;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.node-h .st{margin-left:auto}
+.bar{height:8px;background:#e8eef7;border-radius:99px;overflow:hidden;margin:3px 0 8px}.bar i{display:block;height:100%;background:var(--blue2);border-radius:99px;transition:width .4s}.bar.warn i{background:var(--warn)}.bar.bad i{background:var(--bad)}
+.lbl{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{font-size:12px;font-weight:600;padding:4px 9px;border-radius:99px;background:var(--blue-soft);color:var(--blue);border:1px solid #c7d9fb}
+.chip.notready{background:#fff3e0;color:var(--warn);border-color:#fcd9a8;border-style:dashed}
+.st{font-size:11px;font-weight:700;padding:3px 8px;border-radius:99px;text-transform:uppercase;letter-spacing:.05em;background:#e8f5ee;color:var(--ok)}
+.st.warn{background:#fff3e0;color:var(--warn)}.st.bad{background:#fdecea;color:var(--bad)}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);padding:8px;border-bottom:1px solid var(--line);font-weight:700}
+td{padding:8px;border-bottom:1px solid #eef2f8;vertical-align:middle;white-space:nowrap}
+td .bar{width:110px;display:inline-block;margin:0 6px 0 0;vertical-align:middle}
+.mono{font-family:var(--mono);font-size:12.5px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:18px}@media(max-width:1000px){.two{grid-template-columns:1fr}}
+.ev{display:grid;grid-template-columns:48px 110px 1fr;gap:10px;padding:7px 0;border-bottom:1px solid #eef2f8;font-size:13px}
+.ev .r{font-weight:700;color:var(--blue)}.ev.Warning .r{color:var(--bad)}.ev .o{color:var(--muted);font-family:var(--mono);font-size:12px}
+pre.term{background:#0f2545;color:#dbe7ff;padding:16px;border-radius:12px;font:12.5px/1.5 var(--mono);overflow:auto;max-height:75vh;margin:0}
+.hint{color:var(--muted);font-size:13px}
+canvas{width:100%;height:120px;display:block}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-top:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+/* arquitectura */
+#arch{width:100%;height:auto;display:block}
+.n-box{fill:#fff;stroke:var(--line);stroke-width:1.2;rx:10}
+.n-box.ing{stroke:var(--blue)}.n-box.svc{stroke:#3b82f6}.n-box.wl{stroke:#1d5fd6;stroke-width:1.6}.n-box.pod{stroke:#9db9ec}.n-box.pod.bad{stroke:var(--bad);stroke-dasharray:4 3}.n-box.pvc{stroke:#7c9cc9}.n-box.hpa{stroke:#8b5cf6;stroke-dasharray:5 3}
+.n-title{font:700 12.5px Manrope,system-ui;fill:var(--text)}.n-sub{font:11px var(--mono);fill:var(--muted)}.n-kind{font:700 9.5px Manrope,system-ui;fill:#fff;letter-spacing:.06em}
+.edge{fill:none;stroke:#b8c9e6;stroke-width:1.6}.edge.hot{stroke:var(--blue);stroke-width:2}
+.col-h{font:700 11px Manrope,system-ui;fill:var(--muted);letter-spacing:.08em}
+</style>
+</head>
+<body>
+<header>
+  <div class="brand"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="24" cy="24" r="10"/><circle cx="24" cy="24" r="3" fill="currentColor" stroke="none"/><circle cx="24" cy="24" r="18" stroke-width="2.5"/><path d="M24 2v12M24 34v12M2 24h12M34 24h12M8.4 8.4l8.5 8.5M31.1 31.1l8.5 8.5M8.4 39.6l8.5-8.5M31.1 16.9l8.5-8.5"/></svg> Arquitectura del cluster</div>
+  <div class="right"><span class="dot" id="dot"></span></div>
+</header>
+<nav id="tabs">
+  <button data-t="arch" class="on">Arquitectura</button>
+  <button data-t="nodes">Nodos</button>
+  <button data-t="pods">Pods</button>
+  <button data-t="traffic">Tráfico</button>
+  <button data-t="scale">Escalado</button>
+  <button data-t="net">Red y almacenamiento</button>
+  <button data-t="events">Eventos</button>
+  <button data-t="term">Terminal</button>
+</nav>
+<main>
+  <div class="err" id="err" hidden></div>
+  <section class="kpis" id="kpis"></section>
+
+  <div data-p="arch">
+    <div class="card"><h2>Flujo de tráfico y recursos del namespace</h2><svg id="arch" xmlns="http://www.w3.org/2000/svg"></svg>
+      <p class="hint">Ingress → Service → Deployment/StatefulSet → Pods → PVC. Los pods que no están listos aparecen con borde rojo punteado. HPA/KEDA en violeta sobre el workload que escalan.</p></div>
+  </div>
+
+  <div data-p="nodes" hidden>
+    <div class="card"><h2>Nodos</h2><div class="grid" id="nodes"></div></div>
+  </div>
+
+  <div data-p="pods" hidden>
+    <div class="card"><h2>Pods del namespace</h2><div style="overflow:auto"><table id="pods"></table></div><p class="hint" id="mhint" hidden>metrics-server aún no reporta uso; espera 1 minuto.</p></div>
+  </div>
+
+  <div data-p="traffic" hidden>
+    <section class="kpis" id="tkpis"></section>
+    <div class="two">
+      <div class="card"><h2>Peticiones por segundo (todas las réplicas de api)</h2><canvas id="c-t"></canvas><div class="legend"><span><i style="background:var(--blue)"></i>req/s</span><span><i style="background:var(--warn)"></i>segmentos HLS/s</span></div></div>
+      <div class="card"><h2>Reparto entre pods (req/s ahora)</h2><div id="tbars"></div><p class="hint">El Service reparte las peticiones entre los pods listos; si un pod muere o nace, el reparto cambia solo.</p></div>
+    </div>
+    <div class="card"><h2>Por pod</h2><table id="tpods"></table></div>
+  </div>
+
+  <div data-p="scale" hidden>
+    <div class="two">
+      <div class="card"><h2 id="h-a">Réplicas y CPU · HPA</h2><canvas id="c-a"></canvas><div class="legend"><span><i style="background:var(--blue)"></i>réplicas</span><span><i style="background:var(--warn)"></i>CPU %</span></div></div>
+      <div class="card"><h2 id="h-b">Réplicas · KEDA</h2><canvas id="c-b"></canvas><div class="legend"><span><i style="background:#8b5cf6"></i>réplicas</span></div></div>
+    </div>
+    <div class="card"><h2>Autoescaladores</h2><table id="scalers"></table></div>
+    <div class="card"><h2>Workloads</h2><table id="workloads"></table></div>
+  </div>
+
+  <div data-p="net" hidden>
+    <div class="two">
+      <div class="card"><h2>Ingress</h2><table id="ing"></table></div>
+      <div class="card"><h2>Services</h2><table id="svc"></table></div>
+    </div>
+    <div class="two">
+      <div class="card"><h2>PersistentVolumeClaims</h2><table id="pvc"></table></div>
+      <div class="card"><h2>ConfigMaps y Secrets</h2><table id="cfg"></table></div>
+    </div>
+  </div>
+
+  <div data-p="events" hidden><div class="card"><h2>Últimos eventos</h2><div id="events"></div></div></div>
+
+  <div data-p="term" hidden><div class="card"><h2>Salida de cluster-status.sh (se actualiza cada ~6 s)</h2><pre class="term" id="term">esperando...</pre></div></div>
+</main>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pct=(a,b)=>b?Math.min(100,Math.round(a/b*100)):0;
+const fCpu=m=>m>=1000?(m/1000).toFixed(2)+" cpu":Math.round(m)+"m";
+const fMem=mi=>mi>=1024?(mi/1024).toFixed(1)+" Gi":Math.round(mi)+" Mi";
+const cls=p=>p>85?"bad":p>65?"warn":"";
+const bar=(v,max,label)=>`<div class="lbl"><span>${label}</span><span class="mono">${pct(v,max)}%</span></div><div class="bar ${cls(pct(v,max))}"><i style="width:${pct(v,max)}%"></i></div>`;
+const stClass=s=>s==="Running"?"":["Pending","ContainerCreating","Terminating","PodInitializing"].includes(s)?"warn":"bad";
+const hist={a:[],aCpu:[],b:[],rps:[],seg:[]}, MAX=150; const push=(k,v)=>{hist[k].push(v);if(hist[k].length>MAX)hist[k].shift();};
+let tab="arch";
+$("#tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;tab=b.dataset.t;$$("#tabs button").forEach(x=>x.classList.toggle("on",x===b));$$("[data-p]").forEach(p=>p.hidden=p.dataset.p!==tab);});
+
+function render(d){
+  const ready=d.pods.filter(p=>p.ready).length;
+  const kp=[[d.nodes.filter(n=>n.ready).length+"/"+d.nodes.length,"nodos listos"],[ready+"/"+d.pods.length,"pods listos"],[d.workloads.length,"workloads"],[d.services.length,"services"],[d.pvcs.length,"PVCs"],[d.pods.reduce((a,p)=>a+p.restarts,0),"reinicios"],[d.events.filter(e=>e.type==="Warning").length,"warnings recientes"]];
+  $("#kpis").innerHTML=kp.map(([v,l])=>`<div class="kpi"><b>${v}</b><small>${l}</small></div>`).join("");
+
+  // nodos
+  $("#nodes").innerHTML=d.nodes.map(n=>{
+    const pods=d.pods.filter(p=>p.node===n.name);
+    return `<div class="node ${n.ready?"":"down"}"><div class="node-h"><b>${esc(n.name)}</b><em>${n.role}</em><span class="st ${n.ready?"":"bad"}">${n.ready?"Ready":"NotReady"}</span></div>
+      <div class="hint mono" style="margin-bottom:6px">${esc(n.version)}</div>
+      ${bar(n.cpu_m,n.cpu_alloc_m,"CPU "+fCpu(n.cpu_m)+" / "+fCpu(n.cpu_alloc_m))}${bar(n.mem_mi,n.mem_alloc_mi,"RAM "+fMem(n.mem_mi)+" / "+fMem(n.mem_alloc_mi))}
+      <div class="chips">${pods.map(p=>`<span class="chip ${p.ready?"":"notready"}" title="${esc(p.name)} · ${esc(p.state)}">${esc(p.name)}</span>`).join("")||'<span class="hint">sin pods del namespace</span>'}</div></div>`;}).join("");
+
+  // pods
+  const rows=[...d.pods].sort((a,b)=>a.app.localeCompare(b.app)||a.name.localeCompare(b.name));
+  $("#pods").innerHTML=`<tr><th>Pod</th><th>Label app</th><th>Dueño</th><th>Nodo</th><th>Estado</th><th>Rein.</th><th>CPU uso / req / lím</th><th>RAM uso / req / lím</th><th>Imagen</th><th>IP</th><th>Edad</th></tr>`+
+    rows.map(p=>`<tr><td class="mono">${esc(p.name)}</td><td><span class="chip">${esc(p.app)}</span></td><td class="mono">${esc(p.owner_kind)}</td><td>${esc(p.node)}</td><td><span class="st ${stClass(p.state)}">${esc(p.state)}</span></td><td>${p.restarts}</td>
+      <td><div class="bar ${cls(pct(p.cpu_m,p.lim_cpu_m))}"><i style="width:${pct(p.cpu_m,p.lim_cpu_m)}%"></i></div><span class="mono">${fCpu(p.cpu_m)} / ${fCpu(p.req_cpu_m)} / ${fCpu(p.lim_cpu_m)}</span></td>
+      <td><div class="bar ${cls(pct(p.mem_mi,p.lim_mem_mi))}"><i style="width:${pct(p.mem_mi,p.lim_mem_mi)}%"></i></div><span class="mono">${fMem(p.mem_mi)} / ${fMem(p.req_mem_mi)} / ${fMem(p.lim_mem_mi)}</span></td>
+      <td class="mono">${esc(p.image)}</td><td class="mono">${esc(p.ip)}</td><td>${p.age}</td></tr>`).join("");
+  $("#mhint").hidden=d.metrics_ok;
+
+  // escalado
+  const hpa=d.hpas.find(h=>!h.name.startsWith("keda-"))||d.hpas[0]; const so=d.scaled[0];
+  const wl=n=>d.workloads.find(w=>w.name===n)||{ready:0,desired:0};
+  if(hpa){$("#h-a").textContent=`${hpa.target} · réplicas y CPU (HPA ${hpa.name})`;push("a",wl(hpa.target).ready);push("aCpu",parseInt(hpa.metric.replace(/\D/g,""))||0);}
+  if(so){$("#h-b").textContent=`${so.target} · réplicas (KEDA, trigger ${so.triggers.join(",")})`;push("b",wl(so.target).ready);}
+  chart($("#c-a"),[["#1d5fd6",hist.a,hpa?hpa.max:10],["#d97706",hist.aCpu,100]]);
+  chart($("#c-b"),[["#8b5cf6",hist.b,so?so.max:10]]);
+  $("#scalers").innerHTML=`<tr><th>Tipo</th><th>Nombre</th><th>Objetivo</th><th>Min</th><th>Max</th><th>Actual</th><th>Deseadas</th><th>Métrica</th></tr>`+
+    d.hpas.map(h=>`<tr><td>HPA</td><td class="mono">${esc(h.name)}</td><td class="mono">${esc(h.target)}</td><td>${h.min}</td><td>${h.max}</td><td><b>${h.current}</b></td><td>${h.desired}</td><td>${esc(h.metric)} <span class="hint">(${esc(h.target_desc)})</span></td></tr>`).join("")+
+    d.scaled.map(s=>`<tr><td>KEDA</td><td class="mono">${esc(s.name)}</td><td class="mono">${esc(s.target)}</td><td>${s.min}</td><td>${s.max}</td><td colspan="2"><span class="st ${s.active?"":"warn"}">${s.active?"activo":"inactivo"}</span></td><td>${esc(s.triggers.join(", "))}</td></tr>`).join("");
+  $("#workloads").innerHTML=`<tr><th>Tipo</th><th>Nombre</th><th>Listas / deseadas</th><th>Estrategia</th><th>Imagen</th><th>Pods</th></tr>`+
+    d.workloads.map(w=>`<tr><td>${w.kind}</td><td class="mono">${esc(w.name)}</td><td><b>${w.ready}</b> / ${w.desired}</td><td>${esc(w.strategy)}</td><td class="mono">${esc(w.image)}</td><td class="mono">${w.pods.length}</td></tr>`).join("");
+
+  // red y almacenamiento
+  $("#ing").innerHTML=`<tr><th>Nombre</th><th>Clase</th><th>Host</th><th>Path</th><th>Service</th></tr>`+d.ingresses.flatMap(i=>i.rules.map(r=>`<tr><td class="mono">${esc(i.name)}</td><td>${esc(i.class)}</td><td class="mono">${esc(r.host)}</td><td class="mono">${esc(r.path)}</td><td class="mono">${esc(r.service)}:${r.port}</td></tr>`)).join("")||"<tr><td class='hint'>sin ingress</td></tr>";
+  $("#svc").innerHTML=`<tr><th>Nombre</th><th>Tipo</th><th>ClusterIP</th><th>Puertos</th><th>Apunta a</th></tr>`+d.services.map(s=>`<tr><td class="mono">${esc(s.name)}</td><td>${esc(s.type)}</td><td class="mono">${esc(s.cluster_ip)}</td><td class="mono">${esc(s.ports.join(", "))}</td><td class="mono">${esc(s.targets.join(", "))||"-"}</td></tr>`).join("");
+  $("#pvc").innerHTML=`<tr><th>Nombre</th><th>Estado</th><th>Tamaño</th><th>Modo</th><th>Clase</th></tr>`+d.pvcs.map(p=>`<tr><td class="mono">${esc(p.name)}</td><td><span class="st ${p.phase==="Bound"?"":"warn"}">${esc(p.phase)}</span></td><td class="mono">${esc(p.size)}</td><td class="mono">${esc(p.modes.join(","))}</td><td class="mono">${esc(p.class)}</td></tr>`).join("");
+  $("#cfg").innerHTML=`<tr><th>Tipo</th><th>Nombre</th><th>Claves</th></tr>`+d.configs.map(c=>`<tr><td>${c.kind}</td><td class="mono">${esc(c.name)}</td><td>${c.keys}</td></tr>`).join("");
+
+  $("#events").innerHTML=d.events.map(e=>`<div class="ev ${e.type}"><span class="o">${e.age}</span><span class="r">${esc(e.reason)}</span><span><span class="o">${esc(e.object)}</span> ${esc(e.message)}</span></div>`).join("")||'<p class="hint">sin eventos</p>';
+
+  // tráfico
+  const t=d.traffic||{pods:[],rps:0,seg_ps:0,mbps:0,total:0};
+  push("rps",t.rps); push("seg",t.seg_ps);
+  $("#tkpis").innerHTML=[[t.rps,"req/s total"],[t.seg_ps,"segmentos HLS/s"],[t.mbps,"Mbit/s de audio"],[t.pods.length,"pods api sirviendo"],[t.total.toLocaleString(),"peticiones acumuladas"]].map(([v,l])=>`<div class="kpi"><b>${v}</b><small>${l}</small></div>`).join("");
+  chart($("#c-t"),[["#1d5fd6",hist.rps,null],["#d97706",hist.seg,null]]);
+  const mx=Math.max(1,...t.pods.map(p=>p.rps));
+  $("#tbars").innerHTML=t.pods.map(p=>`<div class="lbl"><span class="mono">${esc(p.pod)} <span class="hint">${esc(p.node)}</span></span><span class="mono">${p.rps} req/s</span></div><div class="bar"><i style="width:${pct(p.rps,mx)}%"></i></div>`).join("")||'<p class="hint">sin pods api listos o sin métricas todavía</p>';
+  $("#tpods").innerHTML=`<tr><th>Pod</th><th>Nodo</th><th>req/s</th><th>segmentos/s</th><th>Mbit/s</th><th>Total acumulado</th></tr>`+t.pods.map(p=>`<tr><td class="mono">${esc(p.pod)}</td><td>${esc(p.node)}</td><td><b>${p.rps}</b></td><td>${p.seg_ps}</td><td>${p.mbps}</td><td class="mono">${p.total.toLocaleString()}</td></tr>`).join("");
+
+  drawArch(d);
+}
+
+function chart(cv,series){
+  const dpr=window.devicePixelRatio||1,W=cv.clientWidth||600,H=120; cv.width=W*dpr;cv.height=H*dpr;const g=cv.getContext("2d");g.scale(dpr,dpr);g.clearRect(0,0,W,H);
+  g.strokeStyle="#e8eef7";for(let y=0;y<=4;y++){g.beginPath();g.moveTo(0,y*H/4);g.lineTo(W,y*H/4);g.stroke();}
+  for(const [color,data,fixedMax] of series){if(!data.length)continue;const max=Math.max(fixedMax||1,...data)*1.1;g.beginPath();g.lineWidth=2.2;g.strokeStyle=color;
+    data.forEach((v,i)=>{const x=i/(MAX-1)*W,y=H-4-(v/max)*(H-12);i?g.lineTo(x,y):g.moveTo(x,y);});g.stroke();
+    const last=data[data.length-1];g.fillStyle=color;g.font="700 12px Manrope,system-ui";g.fillText(String(last),Math.min(W-28,(data.length-1)/(MAX-1)*W+6),H-4-(last/max)*(H-12)-6);}
+}
+
+/* ---------- diagrama de arquitectura ---------- */
+function drawArch(d){
+  const svg=$("#arch"); const colX=[20,250,480,730,1010]; const W=1240, BW=[190,190,210,240,190], BH=52, GAP=12;
+  const cols=[[],[],[],[],[]]; // ingress, svc, workload, pods, pvc
+  d.ingresses.forEach(i=>cols[0].push({id:"ing:"+i.name,kind:"INGRESS",title:i.name,sub:i.rules.map(r=>r.path).join(" ")||"",cls:"ing"}));
+  if(!cols[0].length) cols[0].push({id:"ing:none",kind:"ENTRADA",title:"(sin ingress)",sub:"",cls:"ing"});
+  d.services.forEach(s=>cols[1].push({id:"svc:"+s.name,kind:"SERVICE",title:s.name,sub:s.ports.join(" "),cls:"svc"}));
+  d.workloads.forEach(w=>cols[2].push({id:"wl:"+w.name,kind:w.kind.toUpperCase(),title:w.name,sub:`${w.ready}/${w.desired} listas`,cls:"wl",w}));
+  // pods agrupados por workload, colapsados si son muchos
+  d.workloads.forEach(w=>{
+    const ps=d.pods.filter(p=>w.pods.includes(p.name));
+    const shown=ps.slice(0,6);
+    shown.forEach(p=>cols[3].push({id:"pod:"+p.name,kind:"POD",title:p.name,sub:`${p.node} · ${p.state}`,cls:"pod"+(p.ready?"":" bad"),wl:w.name,pvcs:p.pvcs}));
+    if(ps.length>6) cols[3].push({id:"pod:more:"+w.name,kind:"POD",title:`+${ps.length-6} pods más`,sub:`${ps.filter(p=>p.ready).length}/${ps.length} listos`,cls:"pod",wl:w.name,pvcs:[]});
+  });
+  const orphan=d.pods.filter(p=>!d.workloads.some(w=>w.pods.includes(p.name)));
+  orphan.slice(0,4).forEach(p=>cols[3].push({id:"pod:"+p.name,kind:"POD",title:p.name,sub:p.node,cls:"pod"+(p.ready?"":" bad"),wl:null,pvcs:p.pvcs}));
+  d.pvcs.forEach(p=>cols[4].push({id:"pvc:"+p.name,kind:"PVC",title:p.name,sub:`${p.size} · ${p.phase}`,cls:"pvc"}));
+
+  const pos={}; let maxH=0;
+  cols.forEach((c,ci)=>{let y=40;c.forEach(n=>{pos[n.id]={x:colX[ci],y,w:BW[ci],h:BH};n.ci=ci;y+=BH+GAP;});maxH=Math.max(maxH,y);});
+  // HPA / KEDA como cajas bajo el workload
+  const hpaBoxes=[];
+  const scalers=[...d.hpas.filter(h=>!h.name.startsWith("keda-")).map(h=>({label:"HPA",target:h.target,sub:`${h.min}..${h.max} · ${h.metric||h.target_desc}`})),...d.scaled.map(s=>({label:"KEDA",target:s.target,sub:`${s.min}..${s.max} · ${s.triggers.join(",")}`}))];
+  scalers.forEach(s=>{const t=pos["wl:"+s.target];if(!t)return;hpaBoxes.push({...s,x:t.x,y:maxH+ (hpaBoxes.length*(BH+GAP)),w:t.w,h:BH,tx:t.x+t.w/2,ty:t.y+t.h});});
+  const H=maxH+(hpaBoxes.length?hpaBoxes.length*(BH+GAP)+10:10);
+
+  const edges=[];
+  const link=(a,b,hot)=>{if(pos[a]&&pos[b])edges.push([pos[a],pos[b],hot]);};
+  d.ingresses.forEach(i=>i.rules.forEach(r=>link("ing:"+i.name,"svc:"+r.service,true)));
+  d.services.forEach(s=>s.targets.forEach(t=>link("svc:"+s.name,"wl:"+t,false)));
+  cols[3].forEach(p=>{if(p.wl)link("wl:"+p.wl,p.id,false);p.pvcs.forEach(v=>link(p.id,"pvc:"+v,false));});
+
+  const path=(a,b)=>{const x1=a.x+a.w,y1=a.y+a.h/2,x2=b.x,y2=b.y+b.h/2,c=(x2-x1)/2;return `M${x1},${y1} C${x1+c},${y1} ${x2-c},${y2} ${x2},${y2}`;};
+  const heads=["ENTRADA","SERVICES","WORKLOADS","PODS","ALMACENAMIENTO"];
+  let out=heads.map((h,i)=>`<text class="col-h" x="${colX[i]}" y="24">${h}</text>`).join("");
+  out+=edges.map(([a,b,hot])=>`<path class="edge ${hot?"hot":""}" d="${path(a,b)}"/>`).join("");
+  out+=hpaBoxes.map(h=>`<path class="edge" d="M${h.tx},${h.ty} L${h.tx},${h.y}"/>`).join("");
+  const box=(n,p)=>`<g><rect class="n-box ${n.cls}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}"/>
+    <rect x="${p.x}" y="${p.y}" width="${Math.min(p.w,n.kind.length*6.4+16)}" height="16" rx="6" fill="${n.cls.startsWith("pod")?"#9db9ec":n.cls==="wl"?"#1d5fd6":n.cls==="svc"?"#3b82f6":n.cls==="pvc"?"#7c9cc9":n.cls==="hpa"?"#8b5cf6":"#1d5fd6"}"/>
+    <text class="n-kind" x="${p.x+8}" y="${p.y+11.5}">${n.kind}</text>
+    <text class="n-title" x="${p.x+10}" y="${p.y+33}">${esc(trim(n.title,p.w/7))}</text>
+    <text class="n-sub" x="${p.x+10}" y="${p.y+46}">${esc(trim(n.sub,p.w/6.2))}</text></g>`;
+  cols.forEach(c=>c.forEach(n=>out+=box(n,pos[n.id])));
+  hpaBoxes.forEach(h=>out+=box({kind:h.label,title:"escala "+h.target,sub:h.sub,cls:"hpa"},h));
+  svg.setAttribute("viewBox",`0 0 ${W} ${H}`); svg.innerHTML=out;
+}
+const trim=(s,n)=>s.length>n?s.slice(0,n-1)+"…":s;
+
+async function tick(){
+  try{const r=await (await fetch("/api/cluster")).json();
+    if(r.error){$("#err").hidden=false;$("#err").textContent="kubectl: "+r.error;$("#dot").classList.add("bad");}else{$("#err").hidden=true;$("#dot").classList.remove("bad");}
+    if(r.data)render(r.data); if(r.script)$("#term").textContent=r.script.replace(/\x1b\[[0-9;]*m/g,"");
+  }catch(e){$("#dot").classList.add("bad");}
+}
+tick();setInterval(tick,2000);
+</script>
+</body>
+</html>

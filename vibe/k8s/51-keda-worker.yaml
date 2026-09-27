@@ -1,0 +1,33 @@
+# Requiere KEDA (make addons lo instala).
+# Escala el worker según el largo de la lista "transcode" en Redis:
+# 1 pod por cada 2 trabajos en cola, entre 1 y 30 pods.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: worker
+  namespace: vibe
+spec:
+  scaleTargetRef:
+    name: worker
+  minReplicaCount: 1
+  maxReplicaCount: 30
+  pollingInterval: 5
+  cooldownPeriod: 45
+  advanced:
+    horizontalPodAutoscalerConfig:
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 0
+          policies:
+            - type: Pods
+              value: 10
+              periodSeconds: 10
+        scaleDown:
+          stabilizationWindowSeconds: 30
+  triggers:
+    - type: redis
+      metadata:
+        address: redis.vibe.svc.cluster.local:6379
+        listName: transcode
+        listLength: "2"
+        activationListLength: "0"

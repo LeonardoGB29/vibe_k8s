@@ -1,0 +1,7 @@
+.DS_Store
+Claude outputs/
+__pycache__/
+*.pyc
+.venv/
+vibe/data/audio/*.mp3
+vibe/data/audio/*.wav
