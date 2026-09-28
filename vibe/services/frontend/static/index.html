@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>VIBE</title>
+  <link rel="icon" href="/static/logo.svg" type="image/svg+xml" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700;900&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <div class="bg-glow" aria-hidden="true"></div>
+
+  <header class="top">
+    <a class="brand" href="/">
+      <span class="logo">VI</span>
+      <span class="wordmark">VIBE</span>
+    </a>
+
+    <div class="search">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="search" type="search" placeholder="Buscar canción, artista o álbum" autocomplete="off" />
+    </div>
+
+    <button class="btn btn-primary" id="btn-upload">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 16V4m0 0 5 5m-5-5-5 5"/><path d="M4 20h16"/></svg>
+      Subir audio
+    </button>
+  </header>
+
+  <section class="stats" id="stats">
+    <div class="stat"><span class="stat-n" data-k="ready">0</span><span class="stat-l">listas</span></div>
+    <div class="stat"><span class="stat-n" data-k="processing">0</span><span class="stat-l">procesando</span></div>
+    <div class="stat"><span class="stat-n" data-k="queue_length">0</span><span class="stat-l">en cola</span></div>
+    <div class="stat"><span class="stat-n" data-k="failed">0</span><span class="stat-l">fallidas</span></div>
+    <div class="stat stat-pod"><span class="stat-l">servido por</span><span class="stat-n mono" data-k="pod">-</span></div>
+  </section>
+
+  <main>
+    <div class="section-head">
+      <h1>Biblioteca</h1>
+      <div class="filters" role="tablist">
+        <button class="chip is-active" data-filter="">Todas</button>
+        <button class="chip" data-filter="ready">Listas</button>
+        <button class="chip" data-filter="pending">En cola</button>
+        <button class="chip" data-filter="processing">Procesando</button>
+        <button class="chip" data-filter="failed">Fallidas</button>
+      </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+    <div class="empty" id="empty" hidden>
+      <span class="logo logo-xl">VI</span>
+      <p>Todavía no hay canciones. Sube la primera.</p>
+    </div>
+  </main>
+
+  <footer class="player" id="player">
+    <div class="now">
+      <div class="cover" id="p-cover">VI</div>
+      <div class="meta">
+        <div class="p-title" id="p-title">Nada sonando</div>
+        <div class="p-artist" id="p-artist">Elige una canción</div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <div class="buttons">
+        <button class="ctl" id="btn-prev" title="Anterior" aria-label="Anterior">
+          <svg viewBox="0 0 24 24"><path d="M6 5v14M18 5 8 12l10 7z"/></svg>
+        </button>
+        <button class="ctl ctl-play" id="btn-play" title="Reproducir" aria-label="Reproducir">
+          <svg class="ico-play" viewBox="0 0 24 24"><path d="M7 4l14 8-14 8z"/></svg>
+          <svg class="ico-pause" viewBox="0 0 24 24"><path d="M7 4h4v16H7zM13 4h4v16h-4z"/></svg>
+        </button>
+        <button class="ctl" id="btn-next" title="Siguiente" aria-label="Siguiente">
+          <svg viewBox="0 0 24 24"><path d="M18 5v14M6 5l10 7-10 7z"/></svg>
+        </button>
+      </div>
+      <div class="timeline">
+        <span class="time mono" id="t-cur">0:00</span>
+        <div class="wave" id="wave" role="slider" aria-label="Progreso" tabindex="0"></div>
+        <span class="time mono" id="t-dur">0:00</span>
+      </div>
+    </div>
+
+    <div class="extras">
+      <label class="quality">
+        <span>Calidad</span>
+        <select id="quality">
+          <option value="-1">Auto</option>
+        </select>
+      </label>
+      <label class="volume">
+        <svg viewBox="0 0 24 24"><path d="M4 9v6h4l5 4V5L8 9z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>
+        <input id="volume" type="range" min="0" max="1" step="0.02" value="0.9" />
+      </label>
+    </div>
+    <audio id="audio" preload="none"></audio>
+  </footer>
+
+  <!-- Modal subir -->
+  <div class="modal" id="modal" hidden>
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2>Subir audio</h2>
+        <button class="btn btn-ghost" id="btn-close">Cerrar</button>
+      </div>
+      <form id="form-upload">
+        <label class="drop" id="drop">
+          <input type="file" id="file" name="file" accept=".mp3,.wav,.flac,.ogg,.m4a,.aac" multiple hidden />
+          <span class="drop-icon">
+            <svg viewBox="0 0 24 24"><path d="M12 16V4m0 0 5 5m-5-5-5 5"/><path d="M4 20h16"/></svg>
+          </span>
+          <span class="drop-text" id="drop-text">Arrastra tus archivos aquí o haz clic para elegir</span>
+          <span class="drop-sub">mp3, wav, flac, ogg, m4a · varios a la vez</span>
+        </label>
+        <div class="fields">
+          <label>Artista <input name="artist" placeholder="Desconocido" /></label>
+          <label>Álbum <input name="album" placeholder="Single" /></label>
+        </div>
+        <div class="progress" id="progress" hidden><div class="bar" id="bar"></div><span id="progress-text" class="mono"></span></div>
+        <button class="btn btn-primary btn-block" id="btn-send" type="submit">Subir y transcodificar</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" hidden></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.20/dist/hls.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>
