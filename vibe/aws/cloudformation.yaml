@@ -1,0 +1,308 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >
+  VIBE Audio Streaming - k3s Kubernetes Cluster on EC2 (AWS Academy Sandbox Compatible).
+  Deploys 1 k3s server (t3.medium) + 3 k3s agents (t3.small) + Classic ELB + S3 Buckets.
+
+Parameters:
+  KeyName:
+    Description: Name of an existing EC2 KeyPair for SSH access (optional)
+    Type: String
+    Default: ""
+  ServerInstanceType:
+    Description: EC2 instance type for k3s server (builds images and runs control plane)
+    Type: String
+    Default: t3.medium
+    AllowedValues: [t3.medium, t2.medium]
+  AgentInstanceType:
+    Description: EC2 instance type for k3s agents (worker nodes)
+    Type: String
+    Default: t3.small
+    AllowedValues: [t3.small, t3.micro, t2.small, t2.micro]
+  LatestUbuntuAmiId:
+    Description: SSM Parameter for latest Ubuntu 22.04 LTS AMI in us-east-1
+    Type: "AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>"
+    Default: "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp2/ami-id"
+
+Conditions:
+  HasKeyName: !Not [!Equals [!Ref KeyName, ""]]
+
+Resources:
+  # ----------------------------------------------------
+  # Security Group
+  # ----------------------------------------------------
+  ClusterSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security group for VIBE k3s cluster and nodes
+      SecurityGroupIngress:
+        # SSH
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        # HTTP / ELB
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        # NodePort range for Ingress / k8s services
+        - IpProtocol: tcp
+          FromPort: 30000
+          ToPort: 32767
+          CidrIp: 0.0.0.0/0
+        # k3s API
+        - IpProtocol: tcp
+          FromPort: 6443
+          ToPort: 6443
+          CidrIp: 0.0.0.0/0
+        # K8s Web Viewer (server.py)
+        - IpProtocol: tcp
+          FromPort: 8085
+          ToPort: 8085
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: vibe-k3s-sg
+
+  # Internal communication within Security Group
+  ClusterSecurityGroupSelfIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref ClusterSecurityGroup
+      IpProtocol: "-1"
+      SourceSecurityGroupId: !Ref ClusterSecurityGroup
+
+  # ----------------------------------------------------
+  # Elastic Load Balancer (Classic ELB)
+  # ----------------------------------------------------
+  VibeLoadBalancer:
+    Type: AWS::ElasticLoadBalancing::LoadBalancer
+    Properties:
+      SecurityGroups:
+        - !Ref ClusterSecurityGroup
+      AvailabilityZones:
+        Fn::GetAZs: ""
+      Listeners:
+        - LoadBalancerPort: "80"
+          InstancePort: "30080"
+          Protocol: HTTP
+          InstanceProtocol: HTTP
+      HealthCheck:
+        Target: "HTTP:30080/healthz"
+        HealthyThreshold: "2"
+        UnhealthyThreshold: "5"
+        Interval: "10"
+        Timeout: "5"
+      Instances:
+        - !Ref Agent1Instance
+        - !Ref Agent2Instance
+        - !Ref Agent3Instance
+      Tags:
+        - Key: Name
+          Value: vibe-elb
+
+  # ----------------------------------------------------
+  # S3 Buckets for Audio Storage
+  # ----------------------------------------------------
+  RawAudioBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "vibe-audio-raw-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: vibe
+
+  HlsAudioBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "vibe-audio-hls-${AWS::AccountId}"
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      Tags:
+        - Key: Project
+          Value: vibe
+
+  # ----------------------------------------------------
+  # EC2 k3s Server (Control Plane + Docker build node)
+  # ----------------------------------------------------
+  ServerInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref ServerInstanceType
+      ImageId: !Ref LatestUbuntuAmiId
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref "AWS::NoValue"]
+      IamInstanceProfile: LabInstanceProfile
+      SecurityGroupIds:
+        - !Ref ClusterSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 20
+            VolumeType: gp2
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          hostnamectl set-hostname k3s-server
+          
+          # Install Docker & tools
+          apt-get update -y
+          apt-get install -y ca-certificates curl gnupg lsb-release git jq unzip
+          
+          mkdir -p /etc/apt/keyrings
+          curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+          echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" > /etc/apt/sources.list.d/docker.list
+          apt-get update -y
+          apt-get install -y docker-ce docker-ce-cli containerd.io
+          usermod -aG docker ubuntu
+          
+          # Install AWS CLI v2
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip -q awscliv2.zip
+          ./aws/install
+          rm -rf aws awscliv2.zip
+          
+          # Install k3s server
+          # Fixed token so agents can easily join
+          export K3S_TOKEN="vibe-cluster-secret-token-2026"
+          curl -sfL https://get.k3s.io | sh -s - server \
+            --disable traefik \
+            --node-name k3s-server \
+            --write-kubeconfig-mode 644 \
+            --token "$K3S_TOKEN"
+            
+          # Configure kubeconfig for ubuntu user
+          mkdir -p /home/ubuntu/.kube
+          cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+          chown -R ubuntu:ubuntu /home/ubuntu/.kube
+          echo "export KUBECONFIG=/home/ubuntu/.kube/config" >> /home/ubuntu/.bashrc
+          
+          echo "k3s server ready" > /var/log/k3s-ready.log
+
+      Tags:
+        - Key: Name
+          Value: vibe-k3s-server
+        - Key: Role
+          Value: k3s-server
+
+  # ----------------------------------------------------
+  # EC2 k3s Agents (Worker Nodes)
+  # ----------------------------------------------------
+  Agent1Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: ServerInstance
+    Properties:
+      InstanceType: !Ref AgentInstanceType
+      ImageId: !Ref LatestUbuntuAmiId
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref "AWS::NoValue"]
+      IamInstanceProfile: LabInstanceProfile
+      SecurityGroupIds:
+        - !Ref ClusterSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 15
+            VolumeType: gp2
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          hostnamectl set-hostname k3s-agent-1
+          export K3S_TOKEN="vibe-cluster-secret-token-2026"
+          export K3S_URL="https://${ServerInstance.PrivateIp}:6443"
+          curl -sfL https://get.k3s.io | K3S_URL="$K3S_URL" K3S_TOKEN="$K3S_TOKEN" sh -s - agent --node-name k3s-agent-1
+      Tags:
+        - Key: Name
+          Value: vibe-k3s-agent-1
+        - Key: Role
+          Value: k3s-agent
+
+  Agent2Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: ServerInstance
+    Properties:
+      InstanceType: !Ref AgentInstanceType
+      ImageId: !Ref LatestUbuntuAmiId
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref "AWS::NoValue"]
+      IamInstanceProfile: LabInstanceProfile
+      SecurityGroupIds:
+        - !Ref ClusterSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 15
+            VolumeType: gp2
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          hostnamectl set-hostname k3s-agent-2
+          export K3S_TOKEN="vibe-cluster-secret-token-2026"
+          export K3S_URL="https://${ServerInstance.PrivateIp}:6443"
+          curl -sfL https://get.k3s.io | K3S_URL="$K3S_URL" K3S_TOKEN="$K3S_TOKEN" sh -s - agent --node-name k3s-agent-2
+      Tags:
+        - Key: Name
+          Value: vibe-k3s-agent-2
+        - Key: Role
+          Value: k3s-agent
+
+  Agent3Instance:
+    Type: AWS::EC2::Instance
+    DependsOn: ServerInstance
+    Properties:
+      InstanceType: !Ref AgentInstanceType
+      ImageId: !Ref LatestUbuntuAmiId
+      KeyName: !If [HasKeyName, !Ref KeyName, !Ref "AWS::NoValue"]
+      IamInstanceProfile: LabInstanceProfile
+      SecurityGroupIds:
+        - !Ref ClusterSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: 15
+            VolumeType: gp2
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          hostnamectl set-hostname k3s-agent-3
+          export K3S_TOKEN="vibe-cluster-secret-token-2026"
+          export K3S_URL="https://${ServerInstance.PrivateIp}:6443"
+          curl -sfL https://get.k3s.io | K3S_URL="$K3S_URL" K3S_TOKEN="$K3S_TOKEN" sh -s - agent --node-name k3s-agent-3
+      Tags:
+        - Key: Name
+          Value: vibe-k3s-agent-3
+        - Key: Role
+          Value: k3s-agent
+
+Outputs:
+  LoadBalancerURL:
+    Description: Public URL for VIBE application through ELB
+    Value: !Sub "http://${VibeLoadBalancer.DNSName}"
+  ServerPublicIP:
+    Description: Public IP of the k3s server node
+    Value: !GetAtt ServerInstance.PublicIp
+  ServerPrivateIP:
+    Description: Private IP of the k3s server node
+    Value: !GetAtt ServerInstance.PrivateIp
+  RawBucketName:
+    Description: Name of S3 Raw Audio Bucket
+    Value: !Ref RawAudioBucket
+  HlsBucketName:
+    Description: Name of S3 HLS Audio Bucket
+    Value: !Ref HlsAudioBucket
+  SSHCommand:
+    Description: SSH command to connect to k3s server
+    Value: !Sub "ssh ubuntu@${ServerInstance.PublicIp}"
