@@ -12,10 +12,35 @@ spec:
   rules:
     - http:
         paths:
+          # Frontend (HTML/CSS/JS)
           - path: /
             pathType: Prefix
             backend:
               service:
-                name: api
+                name: frontend
+                port:
+                  number: 80
+          # Upload API (subida de audios)
+          - path: /api/upload
+            pathType: Prefix
+            backend:
+              service:
+                name: upload-api
+                port:
+                  number: 8001
+          # Catalog API (listado, metadatos, stats, delete)
+          - path: /api
+            pathType: Prefix
+            backend:
+              service:
+                name: catalog-api
                 port:
                   number: 8000
+          # Stream API (reproducción HLS y segmentos)
+          - path: /stream
+            pathType: Prefix
+            backend:
+              service:
+                name: stream-api
+                port:
+                  number: 8002

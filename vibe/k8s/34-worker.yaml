@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+  namespace: vibe
+  labels:
+    app: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9100"
+    spec:
+      # Da tiempo a terminar la transcodificación en curso al reducir réplicas
+      terminationGracePeriodSeconds: 60
+      containers:
+        - name: worker
+          image: vibe-worker:dev
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9100
+              name: metrics
+          envFrom:
+            - configMapRef:
+                name: vibe-config
+          env:
+            - name: MINIO_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: vibe-secrets, key: MINIO_ACCESS_KEY } }
+            - name: MINIO_SECRET_KEY
+              valueFrom: { secretKeyRef: { name: vibe-secrets, key: MINIO_SECRET_KEY } }
+            - name: MINIO_SESSION_TOKEN
+              valueFrom: { secretKeyRef: { name: vibe-secrets, key: MINIO_SESSION_TOKEN, optional: true } }
+            - name: POD_NAME
+              valueFrom: { fieldRef: { fieldPath: metadata.name } }
+          resources:
+            requests: { cpu: 100m, memory: 96Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          livenessProbe:
+            httpGet: { path: /, port: 9100 }
+            initialDelaySeconds: 10
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: worker-metrics
+  namespace: vibe
+  labels:
+    app: worker
+spec:
+  selector:
+    app: worker
+  ports:
+    - port: 9100
+      name: metrics

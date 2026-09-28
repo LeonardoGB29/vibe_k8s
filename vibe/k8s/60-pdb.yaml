@@ -1,10 +1,43 @@
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
-  name: api
+  name: frontend-pdb
   namespace: vibe
 spec:
   minAvailable: 1
   selector:
     matchLabels:
-      app: api
+      app: frontend
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: catalog-api-pdb
+  namespace: vibe
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: catalog-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: upload-api-pdb
+  namespace: vibe
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: upload-api
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: stream-api-pdb
+  namespace: vibe
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: stream-api
