@@ -33,7 +33,7 @@ def multipart(fields: dict, file_field: str, path: Path) -> tuple[bytes, str]:
 def upload(api: str, path: Path, meta: dict) -> tuple[str, bool, float]:
     t0 = time.time()
     body, ctype = multipart({"title": meta["title"], "artist": meta["artist"], "album": meta["album"]}, "file", path)
-    req = request.Request(f"{api}/api/tracks", data=body, method="POST", headers={"Content-Type": ctype})
+    req = request.Request(f"{api}/api/upload", data=body, method="POST", headers={"Content-Type": ctype})
     try:
         with request.urlopen(req, timeout=120) as resp:
             return path.name, resp.status == 201, time.time() - t0

@@ -1,23 +1,25 @@
 SHELL := /bin/bash
 CLUSTER := vibe
 NS := vibe
-API_IMG := vibe-api:dev
-WORKER_IMG := vibe-worker:dev
 
-.PHONY: help up down cluster cluster-down addons build load deploy undeploy status logs-api logs-worker \
-        gen-audio seed compose compose-down grafana k6-load k6-stress k6-spike k6-upload watch
+# Microservices images
+MS_IMAGES := vibe-frontend:dev vibe-catalog-api:dev vibe-upload-api:dev vibe-stream-api:dev vibe-worker:dev
+
+.PHONY: help up down cluster cluster-down addons build build-ms load load-ms deploy deploy-ms undeploy status \
+        watch logs-ms grafana gen-audio seed compose compose-ms compose-down \
+        k6-load k6-stress k6-spike k6-upload aws-up aws-down
 
 help: ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
 
-# ---------- Todo en uno ----------
-up: cluster addons build load deploy ## Crea cluster, addons, imágenes y despliega todo
+# ---------- Todo en uno (Local Microservicios) ----------
+up: cluster addons build-ms load-ms deploy-ms ## Crea cluster kind, addons, construye microservicios y despliega todo
 	@echo
-	@echo "Listo. Abre http://localhost  |  Grafana: make grafana"
+	@echo "Listo! Abre http://localhost  |  Grafana: make grafana"
 
-down: cluster-down ## Destruye el cluster
+down: cluster-down ## Destruye el cluster kind
 
-# ---------- Cluster ----------
+# ---------- Cluster Local (kind) ----------
 cluster: ## Crea el cluster kind (1 control-plane + 3 workers)
 	@kind get clusters | grep -q "^$(CLUSTER)$$" || kind create cluster --config k8s/kind-config.yaml
 	kubectl cluster-info --context kind-$(CLUSTER)
@@ -43,32 +45,41 @@ addons: ## ingress-nginx, metrics-server, KEDA y kube-prometheus-stack
 	  --set alertmanager.enabled=false --wait --timeout 10m
 	kubectl -n ingress-nginx wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=180s
 
-# ---------- Imágenes ----------
-build: ## Construye las imágenes de API y worker
-	docker build -t $(API_IMG) ./api
-	docker build -t $(WORKER_IMG) ./worker
+# ---------- Construcción de Microservicios ----------
+build-ms: ## Construye las 5 imágenes de microservicios
+	docker build -t vibe-frontend:dev services/frontend
+	docker build -t vibe-catalog-api:dev services/catalog-api
+	docker build -t vibe-upload-api:dev services/upload-api
+	docker build -t vibe-stream-api:dev services/stream-api
+	docker build -t vibe-worker:dev services/worker
 
-load: ## Carga las imágenes en los nodos de kind
-	kind load docker-image $(API_IMG) $(WORKER_IMG) --name $(CLUSTER)
+load-ms: ## Carga las 5 imágenes de microservicios en kind
+	kind load docker-image $(MS_IMAGES) --name $(CLUSTER)
 
-# ---------- Despliegue ----------
-deploy: ## Aplica todos los manifiestos
+# ---------- Despliegue de Microservicios ----------
+deploy-ms: ## Aplica los manifiestos de microservicios
 	kubectl apply -f k8s/00-namespace.yaml
 	kubectl apply -f k8s/10-config.yaml -f k8s/20-postgres.yaml -f k8s/21-minio.yaml -f k8s/22-redis.yaml
 	kubectl -n $(NS) rollout status statefulset/postgres --timeout=180s
 	kubectl -n $(NS) rollout status statefulset/minio --timeout=180s
-	kubectl apply -f k8s/30-api.yaml -f k8s/31-worker.yaml -f k8s/40-ingress.yaml -f k8s/60-pdb.yaml
-	kubectl -n $(NS) rollout status deployment/api --timeout=180s
-	kubectl apply -f k8s/50-hpa-api.yaml -f k8s/51-keda-worker.yaml
+	kubectl apply -f k8s/30-frontend.yaml \
+	              -f k8s/31-catalog-api.yaml \
+	              -f k8s/32-upload-api.yaml \
+	              -f k8s/33-stream-api.yaml \
+	              -f k8s/34-worker.yaml \
+	              -f k8s/40-ingress.yaml \
+	              -f k8s/60-pdb.yaml
+	kubectl -n $(NS) rollout status deployment/frontend --timeout=120s
+	kubectl -n $(NS) rollout status deployment/catalog-api --timeout=120s
+	kubectl -n $(NS) rollout status deployment/upload-api --timeout=120s
+	kubectl -n $(NS) rollout status deployment/stream-api --timeout=120s
+	kubectl apply -f k8s/50-hpa.yaml -f k8s/51-keda-worker.yaml
 	-kubectl apply -f k8s/70-monitoring.yaml
 
-undeploy:
+undeploy: ## Elimina el namespace y todos los recursos
 	kubectl delete ns $(NS) --ignore-not-found
 
-redeploy: build load ## Reconstruye imágenes y reinicia pods
-	kubectl -n $(NS) rollout restart deployment/api deployment/worker
-
-status: ## Estado de pods, HPA y KEDA
+status: ## Estado de pods, servicios, HPA y KEDA
 	kubectl -n $(NS) get pods -o wide
 	@echo
 	kubectl -n $(NS) get hpa
@@ -78,15 +89,19 @@ status: ## Estado de pods, HPA y KEDA
 watch: ## Pods en vivo por nodo
 	watch -n1 "kubectl -n $(NS) get pods -o wide --sort-by=.spec.nodeName | awk '{print \$$1, \$$3, \$$7}'"
 
-logs-api:
-	kubectl -n $(NS) logs -f deployment/api --all-containers --max-log-requests=20
-
-logs-worker:
-	kubectl -n $(NS) logs -f deployment/worker --all-containers --max-log-requests=40
+logs-ms: ## Logs de todos los microservicios en vivo
+	kubectl -n $(NS) logs -l 'app in (frontend,catalog-api,upload-api,stream-api,worker)' --tail=50 -f
 
 grafana: ## Port-forward a Grafana (admin / vibe)
 	@echo "http://localhost:3000  usuario: admin  clave: vibe"
 	kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80
+
+# ---------- AWS Academy Sandbox ----------
+aws-up: ## Despliega infraestructura en AWS Academy (CloudFormation)
+	@./aws/setup.sh
+
+aws-down: ## Vacia buckets y elimina infraestructura en AWS Academy
+	@./aws/teardown.sh
 
 # ---------- Datos ----------
 gen-audio: ## Genera 200 audios sintéticos en data/audio
@@ -95,12 +110,14 @@ gen-audio: ## Genera 200 audios sintéticos en data/audio
 seed: ## Sube todos los audios a la API (por defecto http://localhost)
 	python3 tools/seed.py --api $${API:-http://localhost} --dir data/audio --parallel 10
 
-# ---------- Local sin K8s ----------
-compose: ## Levanta todo con docker-compose (API en :8000)
-	docker compose up --build -d --scale worker=2
+# ---------- Local sin K8s (Docker Compose) ----------
+compose: compose-ms ## Alias para compose-ms
 
-compose-down:
-	docker compose down -v
+compose-ms: ## Levanta los 5 microservicios con docker compose (puerto 80)
+	docker compose -f docker-compose.microservices.yml up --build -d
+
+compose-down: ## Detiene docker compose
+	docker compose -f docker-compose.microservices.yml down -v
 
 # ---------- Pruebas k6 ----------
 k6-load: ## Carga normal (hasta 300 VUs)

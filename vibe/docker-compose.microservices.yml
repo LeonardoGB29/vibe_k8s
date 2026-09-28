@@ -1,0 +1,100 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: vibe
+      POSTGRES_PASSWORD: vibe
+      POSTGRES_DB: vibe
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibe"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: chrislusf/seaweedfs:latest
+    command: server -dir=/data -ip.bind=0.0.0.0 -master.volumeSizeLimitMB=256 -s3 -s3.port=9000 -s3.config=/etc/seaweedfs/s3.json
+    ports: ["9000:9000", "9333:9333"]
+    volumes:
+      - miniodata:/data
+      - ./s3-config.json:/etc/seaweedfs/s3.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://localhost:9333/cluster/status"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    ports: ["6379:6379"]
+
+  gateway:
+    image: nginx:alpine
+    ports: ["80:80"]
+    volumes:
+      - ./tools/docker-gateway.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - frontend
+      - catalog-api
+      - upload-api
+      - stream-api
+
+  frontend:
+    build: ./services/frontend
+    image: vibe-frontend:dev
+    depends_on:
+      - catalog-api
+
+  catalog-api:
+    build: ./services/catalog-api
+    image: vibe-catalog-api:dev
+    environment: &env
+      DATABASE_URL: postgresql+psycopg://vibe:vibe@postgres:5432/vibe
+      REDIS_URL: redis://redis:6379/0
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: vibeadmin
+      MINIO_SECRET_KEY: vibesecret123
+      MINIO_SECURE: "false"
+      BUCKET_RAW: raw
+      BUCKET_HLS: hls
+      QUEUE_NAME: transcode
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  upload-api:
+    build: ./services/upload-api
+    image: vibe-upload-api:dev
+    environment: *env
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio: { condition: service_healthy }
+      redis: { condition: service_started }
+
+  stream-api:
+    build: ./services/stream-api
+    image: vibe-stream-api:dev
+    environment:
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: vibeadmin
+      MINIO_SECRET_KEY: vibesecret123
+      MINIO_SECURE: "false"
+      BUCKET_HLS: hls
+    depends_on:
+      minio: { condition: service_healthy }
+
+  worker:
+    build: ./services/worker
+    image: vibe-worker:dev
+    environment: *env
+    depends_on:
+      catalog-api: { condition: service_started }
+    deploy:
+      replicas: 2
+
+volumes:
+  pgdata:
+  miniodata:

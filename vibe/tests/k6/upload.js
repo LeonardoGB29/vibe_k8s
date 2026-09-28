@@ -28,7 +28,7 @@ export default function () {
     artist: "k6",
     album: "Escalabilidad",
   };
-  const res = http.post(`${BASE}/api/tracks`, body, { timeout: "120s" });
+  const res = http.post(`${BASE}/api/upload`, body, { timeout: "120s" });
   check(res, { "upload 201": (r) => r.status === 201 });
   sleep(0.2);
 }
