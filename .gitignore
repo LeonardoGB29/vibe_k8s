@@ -5,3 +5,12 @@ __pycache__/
 .venv/
 vibe/data/audio/*.mp3
 vibe/data/audio/*.wav
+
+# Credenciales y claves locales
+.env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.ppk
+*.key

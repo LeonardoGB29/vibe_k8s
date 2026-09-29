@@ -7,10 +7,30 @@ set -euo pipefail
 
 STACK_NAME="vibe-k3s"
 REGION="us-east-1"
-KEY_NAME="${1:-}" # Opcional: nombre de la clave SSH si la tienes
+KEY_NAME="${1:-vockey}" # Clave precreada por AWS Academy Sandbox
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATE_FILE="$SCRIPT_DIR/cloudformation.yaml"
+
+for tool in aws jq python3; do
+  command -v "$tool" >/dev/null || { echo "Falta la herramienta: $tool" >&2; exit 1; }
+done
+aws iam get-instance-profile --instance-profile-name LabInstanceProfile >/dev/null
+aws ec2 describe-key-pairs --region "$REGION" --key-names "$KEY_NAME" >/dev/null
+
+# Usar la VPC predeterminada y subredes públicas explícitas, sin tocar la red del IDE.
+VPC_ID=$(aws ec2 describe-vpcs --region "$REGION" --filters Name=is-default,Values=true --query 'Vpcs[0].VpcId' --output text)
+if [[ "$VPC_ID" == "None" || -z "$VPC_ID" ]]; then
+  echo "No hay VPC predeterminada. Hay que seleccionar una red compatible antes de desplegar." >&2
+  exit 1
+fi
+SUBNETS=$(aws ec2 describe-subnets --region "$REGION" --filters "Name=vpc-id,Values=$VPC_ID" --output json)
+SUBNET_COUNT=$(echo "$SUBNETS" | jq '[.Subnets[] | select(.DefaultForAz and .MapPublicIpOnLaunch)] | length')
+if (( SUBNET_COUNT < 3 )); then
+  echo "Se necesitan al menos tres subredes públicas predeterminadas en distintas zonas." >&2
+  exit 1
+fi
+SUBNET_IDS=$(echo "$SUBNETS" | jq -r '[.Subnets[] | select(.DefaultForAz and .MapPublicIpOnLaunch)] | sort_by(.AvailabilityZone) | .[0:3] | map(.SubnetId) | join(",")')
 
 echo "=========================================================="
 echo " 🚀 VIBE Audio Platform - Despliegue en AWS Academy Sandbox"
@@ -25,19 +45,21 @@ echo "Conectado a la cuenta: $ACCOUNT_ID (Region: $REGION)"
 echo "Desplegando stack CloudFormation '$STACK_NAME'..."
 DEPLOY_ARGS=(
   --stack-name "$STACK_NAME"
-  --template-body "file://$TEMPLATE_FILE"
+  --template-file "$TEMPLATE_FILE"
   --region "$REGION"
-  --capabilities CAPABILITY_IAM
+  --no-fail-on-empty-changeset
+  --parameter-overrides "KeyName=$KEY_NAME" "VpcId=$VPC_ID" "PublicSubnetIds=$SUBNET_IDS"
 )
 
-if [ -n "$KEY_NAME" ]; then
-  DEPLOY_ARGS+=(--parameters "ParameterKey=KeyName,ParameterValue=$KEY_NAME")
+# Mantener el token al actualizar un stack; generar uno solo para un cluster nuevo.
+if ! aws cloudformation describe-stacks --stack-name "$STACK_NAME" --region "$REGION" >/dev/null 2>&1; then
+  CLUSTER_TOKEN=$(python3 -c 'import secrets; print(secrets.token_hex(32))')
+  DEPLOY_ARGS+=("ClusterToken=$CLUSTER_TOKEN")
 fi
 
 aws cloudformation deploy "${DEPLOY_ARGS[@]}"
 
-echo "Esperando que el stack termine de crearse..."
-aws cloudformation wait stack-create-complete --stack-name "$STACK_NAME" --region "$REGION" || true
+# deploy ya espera a que termine la creación o actualización y falla si no se completa.
 
 # 3. Obtener Outputs
 echo "Obteniendo datos de salida de la infraestructura..."
@@ -58,11 +80,12 @@ echo "----------------------------------------------------------"
 echo ""
 echo "=== Pasos siguientes para completar el despliegue dentro del servidor ==="
 echo "1. Conectate por SSH o Session Manager al servidor:"
-echo "   ssh ubuntu@$SERVER_IP"
+echo "   ssh -i /ruta/labsuser.pem ec2-user@$SERVER_IP"
 echo ""
-echo "2. Clona el repositorio y ejecuta el instalador del cluster:"
-echo "   git clone https://github.com/TU_USUARIO/vibe_k8s.git vibe"
-echo "   cd vibe/vibe"
-echo "   ./aws/cluster-init.sh $RAW_BUCKET $HLS_BUCKET"
+echo "2. Copia vibe-aws.tar.gz y labsuser.pem al servidor, y ejecuta:"
+echo "   tar -xzf vibe-aws.tar.gz"
+echo "   cd vibe_k8s/vibe"
+echo "   SSH_PRIVATE_KEY=/ruta/labsuser.pem bash aws/cluster-init.sh $RAW_BUCKET $HLS_BUCKET"
+echo "   Usa la versión del proyecto que incluya las correcciones locales, no una copia antigua."
 echo ""
 echo "Tu aplicacion estara disponible en: $ELB_URL"

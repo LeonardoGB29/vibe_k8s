@@ -1,0 +1,42 @@
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: vibe-traefik
+  namespace: kube-system
+spec:
+  repo: https://traefik.github.io/charts
+  chart: traefik
+  version: "41.6.0"
+  targetNamespace: traefik
+  createNamespace: true
+  valuesContent: |-
+    fullnameOverride: traefik
+    deployment:
+      replicas: 2
+    service:
+      type: NodePort
+      spec:
+        externalTrafficPolicy: Cluster
+    ports:
+      web:
+        nodePort: 30080
+        transport:
+          respondingTimeouts:
+            readTimeout: 120s
+            writeTimeout: 120s
+      websecure:
+        expose:
+          default: false
+    providers:
+      kubernetesIngress:
+        enabled: true
+        ingressClass: traefik
+      kubernetesGateway:
+        enabled: false
+    ingressClass:
+      enabled: true
+      isDefaultClass: false
+      name: traefik
+    ingressRoute:
+      dashboard:
+        enabled: false

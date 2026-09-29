@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 import config
 from db import Base, engine, get_session, wait_for_db
 from models import Track
-import queue
+import job_queue as queue
 from schemas import Stats, TrackOut
 import storage
 

@@ -135,7 +135,10 @@ def collect(ns):
         claims = [v["persistentVolumeClaim"]["claimName"] for v in p["spec"].get("volumes", []) if "persistentVolumeClaim" in v]
         pods.append({
             "name": name, "labels": p["metadata"].get("labels", {}), "app": p["metadata"].get("labels", {}).get("app", "?"),
-            "node": p["spec"].get("nodeName", ""), "state": state, "ready": bool(cs.get("ready")),
+            "node": p["spec"].get("nodeName", ""), "state": state,
+            "ready": not p["metadata"].get("deletionTimestamp") and any(
+                c["type"] == "Ready" and c["status"] == "True" for c in p["status"].get("conditions", [])
+            ),
             "restarts": cs.get("restartCount", 0), "ip": p["status"].get("podIP", ""), "age": age(p["metadata"].get("creationTimestamp")),
             "image": c0.get("image", ""), "owner_kind": owner.get("kind", ""), "owner": owner.get("name", ""), "pvcs": claims,
             "req_cpu_m": cpu_m(res.get("requests", {}).get("cpu")), "req_mem_mi": mem_mi(res.get("requests", {}).get("memory")),
@@ -240,9 +243,10 @@ def pod_metrics(ns, pod, port=8000):
 def collect_traffic(ns, pods):
     now = time.time()
     prev = STATE["traffic_prev"]
-    api_pods = [p for p in pods if p["app"] == "api" and p["ready"]]
+    api_ports = {"api": 8000, "catalog-api": 8000, "upload-api": 8001, "stream-api": 8002}
+    api_pods = [p for p in pods if p["app"] in api_ports and p["ready"]]
     with ThreadPoolExecutor(8) as ex:
-        futs = {p["name"]: ex.submit(pod_metrics, ns, p["name"]) for p in api_pods}
+        futs = {p["name"]: ex.submit(pod_metrics, ns, p["name"], api_ports[p["app"]]) for p in api_pods}
     rows, cur = [], {}
     for name, fut in futs.items():
         try:

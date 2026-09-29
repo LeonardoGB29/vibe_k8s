@@ -5,32 +5,47 @@
 # ==============================================================================
 set -euo pipefail
 
-RAW_BUCKET="${1:-vibe-audio-raw}"
-HLS_BUCKET="${2:-vibe-audio-hls}"
+RAW_BUCKET="${1:?Indica el bucket RawBucketName del stack}"
+HLS_BUCKET="${2:?Indica el bucket HlsBucketName del stack}"
+export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
+export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+export IMAGE_DISTRIBUTION="${IMAGE_DISTRIBUTION:-ssm}"
+export IMAGE_BUCKET="${IMAGE_BUCKET:-$RAW_BUCKET}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "=== [1/6] Esperando que los nodos del cluster estén Ready ==="
-while [ "$(kubectl get nodes --no-headers 2>/dev/null | grep -c "Ready")" -lt 4 ]; do
-    echo "Esperando nodos... ($(kubectl get nodes --no-headers 2>/dev/null | grep -c 'Ready')/4 listos)"
+DEADLINE=$((SECONDS + 600))
+until kubectl get nodes -o json 2>/dev/null | jq -e '[.items[] | select(.status.conditions[] | .type == "Ready" and .status == "True")] | length == 4' >/dev/null; do
+    if (( SECONDS >= DEADLINE )); then
+        echo "No llegaron a estar Ready los cuatro nodos en 10 minutos" >&2
+        exit 1
+    fi
+    echo "Esperando los cuatro nodos Ready..."
     sleep 5
 done
 kubectl get nodes -o wide
 
-echo "=== [2/6] Instalando Ingress NGINX (NodePort 30080 para el ELB) ==="
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.11.1/deploy/static/provider/baremetal/deploy.yaml
-
-echo "Esperando el Deployment de ingress-nginx..."
-kubectl wait --namespace ingress-nginx \
-  --for=condition=available deployment/ingress-nginx-controller \
-  --timeout=180s || true
-
-# Configurar el NodePort 30080 exactamente para el ELB
-kubectl patch svc ingress-nginx-controller -n ingress-nginx --type='json' -p='[{"op": "replace", "path": "/spec/ports/0/nodePort", "value":30080}]' || true
+echo "=== [2/6] Instalando Traefik (NodePort 30080 para el ELB) ==="
+kubectl apply -f "$SCRIPT_DIR/traefik.yaml"
+DEADLINE=$((SECONDS + 300))
+until kubectl -n traefik get deployment traefik >/dev/null 2>&1; do
+    if (( SECONDS >= DEADLINE )); then
+        kubectl -n kube-system get jobs,pods
+        echo "El controlador Helm de k3s no creó Traefik" >&2
+        exit 1
+    fi
+    sleep 5
+done
+kubectl -n traefik rollout status deployment/traefik --timeout=300s
 
 echo "=== [3/6] Instalando KEDA (para autoescalado de workers por cola Redis) ==="
-kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.15.1/keda-2.15.1.yaml
+kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.21.0/keda-2.21.0.yaml
+kubectl wait --for=condition=Established crd/scaledobjects.keda.sh --timeout=180s
+kubectl -n keda rollout status deployment/keda-operator --timeout=180s
+kubectl -n keda rollout status deployment/keda-metrics-apiserver --timeout=180s
+kubectl -n keda rollout status deployment/keda-admission --timeout=180s
 
 echo "=== [4/6] Construyendo imágenes de microservicios y distribuyendo a los nodos ==="
 chmod +x "$SCRIPT_DIR/build-and-load.sh"
@@ -44,18 +59,19 @@ kubectl apply -f k8s/00-namespace.yaml
 
 # Obtener credenciales temporales de la instancia (LabRole/LabInstanceProfile)
 # o usar token de sesión si fue provisto
-TOKEN=$(curl -s -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" || true)
-ROLE_NAME=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/ || true)
+TOKEN=$(curl -fsS --max-time 5 -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" || true)
+ROLE_NAME=$(curl -fsS --max-time 5 -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/ || true)
 
 if [ -n "$ROLE_NAME" ]; then
-    CREDS=$(curl -s -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE_NAME")
+    CREDS=$(curl -fsS --max-time 5 -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE_NAME")
+    echo "$CREDS" | jq -e '.Code == "Success" and (.AccessKeyId | type == "string") and (.SecretAccessKey | type == "string") and (.Token | type == "string")' >/dev/null
     AWS_AK=$(echo "$CREDS" | jq -r '.AccessKeyId')
     AWS_SK=$(echo "$CREDS" | jq -r '.SecretAccessKey')
     AWS_ST=$(echo "$CREDS" | jq -r '.Token')
 else
-    AWS_AK="${AWS_ACCESS_KEY_ID:-vibeadmin}"
-    AWS_SK="${AWS_SECRET_ACCESS_KEY:-vibesecret123}"
-    AWS_ST="${AWS_SESSION_TOKEN:-}"
+    AWS_AK="${AWS_ACCESS_KEY_ID:?No hay rol EC2 ni AWS_ACCESS_KEY_ID}"
+    AWS_SK="${AWS_SECRET_ACCESS_KEY:?No hay rol EC2 ni AWS_SECRET_ACCESS_KEY}"
+    AWS_ST="${AWS_SESSION_TOKEN:?Indica AWS_SESSION_TOKEN para las credenciales temporales}"
 fi
 
 # Generar ConfigMap y Secret para S3
@@ -105,9 +121,10 @@ kubectl apply -f k8s/31-catalog-api.yaml
 kubectl apply -f k8s/32-upload-api.yaml
 kubectl apply -f k8s/33-stream-api.yaml
 kubectl apply -f k8s/34-worker.yaml
-kubectl apply -f k8s/40-ingress.yaml
+kubectl apply -f "$SCRIPT_DIR/ingress.yaml"
 kubectl apply -f k8s/50-hpa.yaml
 kubectl apply -f k8s/51-keda-worker.yaml
+kubectl -n vibe patch scaledobject worker --type=merge -p '{"spec":{"maxReplicaCount":8}}'
 kubectl apply -f k8s/60-pdb.yaml
 
 echo "Esperando que todos los microservicios inicien..."
@@ -115,6 +132,7 @@ kubectl rollout status deployment/frontend -n vibe --timeout=120s
 kubectl rollout status deployment/catalog-api -n vibe --timeout=120s
 kubectl rollout status deployment/upload-api -n vibe --timeout=120s
 kubectl rollout status deployment/stream-api -n vibe --timeout=120s
+kubectl rollout status deployment/worker -n vibe --timeout=120s
 
 echo "=========================================================="
 echo " 🎉 VIBE Microservicios desplegados exitosamente en AWS!"

@@ -1,5 +1,16 @@
 # VIBE · Plataforma de streaming de audio sobre Kubernetes
 
+## Despliegue actual en AWS Academy
+
+La aplicación actual tiene cinco microservicios: frontend, catalog-api, upload-api,
+stream-api y worker. En AWS se ejecutan en cuatro EC2 con k3s, Traefik y S3 real.
+HPA escala las APIs por CPU; KEDA escala workers por la cola Redis (máximo 8 en AWS).
+
+Consulta [la guía AWS actualizada](aws/README.md) y
+[los ensayos medidos](aws/DEMONSTRATIONS.md).
+Los apartados históricos de arranque local de este documento aún contienen
+referencias al monolito api; para la demostración AWS utiliza esas dos guías.
+
 Proyecto académico: una app de música (subida, transcodificación a HLS y reproducción)
 desplegada en Kubernetes para evaluar **escalabilidad**, **tolerancia a fallos** y
 **pruebas de estrés**, y mostrar cómo Kubernetes gestiona decenas de contenedores.

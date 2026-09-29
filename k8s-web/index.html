@@ -93,7 +93,7 @@ canvas{width:100%;height:120px;display:block}
   <div data-p="traffic" hidden>
     <section class="kpis" id="tkpis"></section>
     <div class="two">
-      <div class="card"><h2>Peticiones por segundo (todas las réplicas de api)</h2><canvas id="c-t"></canvas><div class="legend"><span><i style="background:var(--blue)"></i>req/s</span><span><i style="background:var(--warn)"></i>segmentos HLS/s</span></div></div>
+      <div class="card"><h2>Peticiones por segundo (réplicas de los microservicios)</h2><canvas id="c-t"></canvas><div class="legend"><span><i style="background:var(--blue)"></i>req/s</span><span><i style="background:var(--warn)"></i>segmentos HLS/s</span></div></div>
       <div class="card"><h2>Reparto entre pods (req/s ahora)</h2><div id="tbars"></div><p class="hint">El Service reparte las peticiones entre los pods listos; si un pod muere o nace, el reparto cambia solo.</p></div>
     </div>
     <div class="card"><h2>Por pod</h2><table id="tpods"></table></div>
@@ -183,10 +183,10 @@ function render(d){
   // tráfico
   const t=d.traffic||{pods:[],rps:0,seg_ps:0,mbps:0,total:0};
   push("rps",t.rps); push("seg",t.seg_ps);
-  $("#tkpis").innerHTML=[[t.rps,"req/s total"],[t.seg_ps,"segmentos HLS/s"],[t.mbps,"Mbit/s de audio"],[t.pods.length,"pods api sirviendo"],[t.total.toLocaleString(),"peticiones acumuladas"]].map(([v,l])=>`<div class="kpi"><b>${v}</b><small>${l}</small></div>`).join("");
+  $("#tkpis").innerHTML=[[t.rps,"req/s total"],[t.seg_ps,"segmentos HLS/s"],[t.mbps,"Mbit/s de audio"],[t.pods.length,"pods de API sirviendo"],[t.total.toLocaleString(),"peticiones acumuladas"]].map(([v,l])=>`<div class="kpi"><b>${v}</b><small>${l}</small></div>`).join("");
   chart($("#c-t"),[["#1d5fd6",hist.rps,null],["#d97706",hist.seg,null]]);
   const mx=Math.max(1,...t.pods.map(p=>p.rps));
-  $("#tbars").innerHTML=t.pods.map(p=>`<div class="lbl"><span class="mono">${esc(p.pod)} <span class="hint">${esc(p.node)}</span></span><span class="mono">${p.rps} req/s</span></div><div class="bar"><i style="width:${pct(p.rps,mx)}%"></i></div>`).join("")||'<p class="hint">sin pods api listos o sin métricas todavía</p>';
+  $("#tbars").innerHTML=t.pods.map(p=>`<div class="lbl"><span class="mono">${esc(p.pod)} <span class="hint">${esc(p.node)}</span></span><span class="mono">${p.rps} req/s</span></div><div class="bar"><i style="width:${pct(p.rps,mx)}%"></i></div>`).join("")||'<p class="hint">sin pods de API listos o sin métricas todavía</p>';
   $("#tpods").innerHTML=`<tr><th>Pod</th><th>Nodo</th><th>req/s</th><th>segmentos/s</th><th>Mbit/s</th><th>Total acumulado</th></tr>`+t.pods.map(p=>`<tr><td class="mono">${esc(p.pod)}</td><td>${esc(p.node)}</td><td><b>${p.rps}</b></td><td>${p.seg_ps}</td><td>${p.mbps}</td><td class="mono">${p.total.toLocaleString()}</td></tr>`).join("");
 
   drawArch(d);

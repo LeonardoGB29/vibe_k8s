@@ -22,6 +22,7 @@ metadata:
     app: frontend
 spec:
   replicas: 2
+  minReadySeconds: 5
   revisionHistoryLimit: 3
   strategy:
     type: RollingUpdate
@@ -37,7 +38,7 @@ spec:
         app: frontend
         version: v1
     spec:
-      terminationGracePeriodSeconds: 10
+      terminationGracePeriodSeconds: 30
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -65,3 +66,7 @@ spec:
             httpGet: { path: /healthz, port: 80 }
             initialDelaySeconds: 5
             periodSeconds: 10
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep 10"]
