@@ -18,6 +18,9 @@ spec:
         prometheus.io/scrape: "true"
         prometheus.io/port: "9100"
     spec:
+      tolerations:
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 15 }
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 15 }
       # Da tiempo a terminar la transcodificación en curso al reducir réplicas
       terminationGracePeriodSeconds: 60
       containers:

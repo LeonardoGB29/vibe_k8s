@@ -38,6 +38,9 @@ spec:
         app: frontend
         version: v1
     spec:
+      tolerations:
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 15 }
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 15 }
       terminationGracePeriodSeconds: 30
       affinity:
         podAntiAffinity:

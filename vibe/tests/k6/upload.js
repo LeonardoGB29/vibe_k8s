@@ -4,9 +4,8 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 import { BASE } from "./common.js";
 
-const FILES = [
-  "../../data/audio/001 - DJ Replica - Lunar Horizon.mp3",
-].map((p) => open(p, "b"));
+const uploadFile = __ENV.UPLOAD_FILE || "../../data/audio/001 - DJ Replica - Lunar Horizon.mp3";
+const FILES = [open(uploadFile, "b")];
 
 export const options = {
   scenarios: {

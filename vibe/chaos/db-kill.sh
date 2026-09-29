@@ -1,24 +1,39 @@
 #!/usr/bin/env bash
-# Borra el pod de Postgres y verifica que el StatefulSet lo recrea con el mismo PVC
-# y que los datos siguen ahí.
+# Reinicia PostgreSQL y verifica pod, PVC y cantidad de tracks.
 set -euo pipefail
-NS=vibe
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/lib.sh"
+require_cmds kubectl curl python3
+require_cluster
 
-BEFORE=$(curl -s localhost/api/stats | python3 -c 'import sys,json; print(json.load(sys.stdin)["total"])')
-echo "[$(date +%T)] Tracks antes: $BEFORE"
-echo "[$(date +%T)] Borrando postgres-0"
-T0=$(date +%s)
-kubectl -n $NS delete pod postgres-0 --wait=false
+json_total() { python3 -c 'import json,sys; print(json.load(sys.stdin)["total"])'; }
+BEFORE="$(curl -fsS --max-time 10 "$BASE_URL/api/stats" | json_total)"
+PVC_BEFORE="$(kubectl -n "$NS" get pod postgres-0 -o jsonpath='{.spec.volumes[?(@.persistentVolumeClaim)].persistentVolumeClaim.claimName}')"
+UID_BEFORE="$(kubectl -n "$NS" get pod postgres-0 -o jsonpath='{.metadata.uid}')"
+[[ -n "$PVC_BEFORE" ]] || die "postgres-0 no tiene PVC"
 
-# cuenta errores de la API mientras la BD no está
-ERR=0; OK=0
-until [[ "$(kubectl -n $NS get pod postgres-0 -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null)" == "true" ]]; do
-  if curl -sf -o /dev/null localhost/api/stats; then OK=$((OK+1)); else ERR=$((ERR+1)); fi
-  sleep 0.5
+trap 'stop_probe' EXIT
+start_probe db-kill "$BASE_URL/api/stats"
+echo "[$(now)] Tracks antes: $BEFORE; PVC: $PVC_BEFORE"
+T0=$SECONDS
+kubectl -n "$NS" delete pod postgres-0 --wait=false >/dev/null
+DEADLINE=$((SECONDS + 180))
+while true; do
+  UID_NOW="$(kubectl -n "$NS" get pod postgres-0 -o jsonpath='{.metadata.uid}' 2>/dev/null || true)"
+  READY_NOW="$(kubectl -n "$NS" get pod postgres-0 -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || true)"
+  [[ -n "$UID_NOW" && "$UID_NOW" != "$UID_BEFORE" && "$READY_NOW" == "true" ]] && break
+  (( SECONDS < DEADLINE )) || die "PostgreSQL no se recuperó en 180s"
+  sleep 1
 done
-echo "[$(date +%T)] Postgres de vuelta en $(( $(date +%s) - T0 )) s (requests durante la caída: $OK ok, $ERR error)"
-
 sleep 3
-AFTER=$(curl -s localhost/api/stats | python3 -c 'import sys,json; print(json.load(sys.stdin)["total"])')
-echo "[$(date +%T)] Tracks después: $AFTER"
-[[ "$BEFORE" == "$AFTER" ]] && echo "OK: los datos sobrevivieron (PVC)" || echo "ATENCIÓN: se perdieron datos"
+echo "[$(now)] PostgreSQL recuperado en $((SECONDS - T0)) s"
+
+AFTER="$(curl -fsS --retry 10 --retry-delay 1 --max-time 10 "$BASE_URL/api/stats" | json_total)"
+PVC_AFTER="$(kubectl -n "$NS" get pod postgres-0 -o jsonpath='{.spec.volumes[?(@.persistentVolumeClaim)].persistentVolumeClaim.claimName}')"
+stop_probe
+trap - EXIT
+
+echo "[$(now)] Tracks después: $AFTER; PVC: $PVC_AFTER"
+[[ "$BEFORE" == "$AFTER" ]] || die "Cambió el total de tracks: $BEFORE -> $AFTER"
+[[ "$PVC_BEFORE" == "$PVC_AFTER" ]] || die "Cambió el PVC: $PVC_BEFORE -> $PVC_AFTER"
+echo "OK: datos y PVC se conservaron. Evidencia: $PROBE_FILE"

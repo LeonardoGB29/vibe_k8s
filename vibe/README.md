@@ -74,12 +74,13 @@ k9s -n vibe             # pods en vivo
 | Carga | `make k6-load` | p95, tasa de error, réplicas de `api` en Grafana |
 | Estrés | `make k6-stress` | punto de quiebre (1500 VUs) |
 | Pico | `make k6-spike` | cuánto tarda el HPA en reaccionar |
-| Escalabilidad del worker | `make seed` o `make k6-upload` | KEDA: `kubectl -n vibe get scaledobject -w`, pods de 1 a 30 |
-| Fallo de pod | `chaos/pod-kill.sh 15 6` (con k6-load corriendo) | tiempo de recuperación, errores |
-| Fallo de nodo | `chaos/node-down.sh vibe-worker 180` | pods reprogramados a otros nodos |
-| Fallo de BD | `chaos/db-kill.sh` | datos intactos gracias al PVC |
-| Rolling update | `chaos/rolling-update.sh v2` (con k6-load corriendo) | 0 errores |
-| Límite de memoria | `chaos/oom.sh` / `chaos/oom.sh restore` | OOMKilled y reinicio automático |
+| N usuarios | `make k6-users VUS=500 DURATION=3m` | p95 y error para una concurrencia fija |
+| Escalabilidad del worker | `make worker-scale UPLOADS=200` | cola Redis y KEDA de 1 a 30 pods |
+| Fallo de pod | `make chaos-pod INTERVAL=15 TIMES=6` | tiempo de recuperación y errores HTTP |
+| Fallo de nodo | `make chaos-node NODE=vibe-worker DOWN=180` | pods stateless reprogramados en otros nodos |
+| Fallo de BD | `make chaos-db` | mismo PVC y datos intactos |
+| Rolling update | `make chaos-rolling VERSION=v2` | cero errores durante despliegue y restauración |
+| Límite de memoria | `make chaos-oom` / `make chaos-oom-restore` | OOMKilled verificado y restauración |
 
 Cada prueba se corre 3 veces y se reporta el promedio. Capturas en `docs/evidencia/`.
 
@@ -97,8 +98,8 @@ redis list: keda_scaler_metrics_value{scaledObject="worker"}
 
 ## Notas
 
-- **Nodo caído:** Kubernetes espera 5 min (`tolerationSeconds` por defecto) antes de mover pods de un nodo NotReady.
-  Para la demo puedes bajarlo con `kubectl -n vibe patch deploy api -p '{"spec":{"template":{"spec":{"tolerations":[{"key":"node.kubernetes.io/not-ready","operator":"Exists","effect":"NoExecute","tolerationSeconds":15},{"key":"node.kubernetes.io/unreachable","operator":"Exists","effect":"NoExecute","tolerationSeconds":15}]}}}}'`.
+- **Nodo caído:** los deployments stateless usan `tolerationSeconds: 15`; los servicios con PVC conservan
+  el valor predeterminado. Así la prueba de 180 s reprograma las API sin evacuar almacenamiento local.
 - **Almacenamiento S3:** MinIO retiró sus imágenes de Docker Hub en 2026, por eso se usa SeaweedFS (`chrislusf/seaweedfs`) con la misma API S3. El Service y las variables siguen llamándose `minio` para no tocar la API ni el worker.
 - **Imágenes en kind:** tras cambiar código, `make redeploy` (build + load + restart).
 - **Audios:** todo el dataset es sintético (generado con ffmpeg). Si suben música propia, usen pistas con licencia CC0 (Pixabay, Free Music Archive).

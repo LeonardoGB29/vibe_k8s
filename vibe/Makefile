@@ -1,4 +1,9 @@
+ifeq ($(OS),Windows_NT)
+SHELL := C:/Progra~1/Git/bin/bash.exe
+else
 SHELL := /bin/bash
+endif
+.SHELLFLAGS := -ec
 CLUSTER := vibe
 NS := vibe
 
@@ -7,10 +12,12 @@ MS_IMAGES := vibe-frontend:dev vibe-catalog-api:dev vibe-upload-api:dev vibe-str
 
 .PHONY: help up down cluster cluster-down addons build build-ms load load-ms deploy deploy-ms undeploy status \
         watch logs-ms grafana gen-audio seed compose compose-ms compose-down \
-        k6-load k6-stress k6-spike k6-upload aws-up aws-down
+        k6-load k6-stress k6-spike k6-users k6-upload worker-scale \
+        chaos-pod chaos-node chaos-db chaos-rolling chaos-oom chaos-oom-restore \
+        aws-up aws-down
 
 help: ## Muestra esta ayuda
-	@grep -E '^[a-zA-Z_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-16s\033[0m %s\n", $$1, $$2}'
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
 
 # ---------- Todo en uno (Local Microservicios) ----------
 up: cluster addons build-ms load-ms deploy-ms ## Crea cluster kind, addons, construye microservicios y despliega todo
@@ -129,5 +136,33 @@ k6-stress: ## Estrés (hasta 1500 VUs)
 k6-spike: ## Pico repentino (0 a 1000 VUs en 10 s)
 	k6 run -e BASE_URL=$${API:-http://localhost} tests/k6/spike.js
 
+k6-users: ## Carga fija: make k6-users VUS=500 DURATION=3m
+	@[[ "$${VUS:-}" =~ ^[1-9][0-9]*$$ ]] || { echo "Uso: make k6-users VUS=500 DURATION=3m" >&2; exit 2; }
+	@[[ "$${DURATION:-}" =~ ^[1-9][0-9]*(ms|s|m|h)$$ ]] || { echo "DURATION inválida (ejemplo: 3m)" >&2; exit 2; }
+	k6 run -e BASE_URL=$${API:-http://localhost} -e VUS=$${VUS} -e DURATION=$${DURATION} tests/k6/users.js
+
 k6-upload: ## Subidas concurrentes (escala el worker)
+	@test -f "$${UPLOAD_FILE:-data/audio/001 - DJ Replica - Lunar Horizon.mp3}" || { echo "Falta el audio. Ejecuta: make gen-audio" >&2; exit 2; }
 	k6 run -e BASE_URL=$${API:-http://localhost} tests/k6/upload.js
+
+worker-scale: ## Ejecuta subidas y registra cola/réplicas KEDA (UPLOADS=200)
+	python3 tools/run_worker_scale.py --api $${API:-http://localhost} --uploads $${UPLOADS:-200}
+
+# ---------- Pruebas de resiliencia (ejecutar deliberadamente) ----------
+chaos-pod: ## Elimina pods de API y mide recuperación (INTERVAL=15 TIMES=6)
+	./chaos/pod-kill.sh $${INTERVAL:-15} $${TIMES:-6} $${APP:-catalog-api}
+
+chaos-node: ## Apaga temporalmente un worker kind (NODE=vibe-worker DOWN=180)
+	./chaos/node-down.sh $${NODE:-vibe-worker} $${DOWN:-180}
+
+chaos-db: ## Reinicia PostgreSQL y verifica persistencia del PVC
+	./chaos/db-kill.sh
+
+chaos-rolling: ## Rolling update local y sondeo HTTP (VERSION=v2)
+	./chaos/rolling-update.sh $${VERSION:-v2}
+
+chaos-oom: ## Fuerza y verifica OOMKilled en worker
+	./chaos/oom.sh
+
+chaos-oom-restore: ## Restaura el límite normal del worker
+	./chaos/oom.sh restore

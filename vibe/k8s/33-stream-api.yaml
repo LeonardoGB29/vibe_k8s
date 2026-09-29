@@ -41,6 +41,9 @@ spec:
         prometheus.io/port: "8002"
         prometheus.io/path: /metrics
     spec:
+      tolerations:
+        - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 15 }
+        - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 15 }
       terminationGracePeriodSeconds: 15
       affinity:
         podAntiAffinity:
