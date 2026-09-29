@@ -5,3 +5,4 @@ data/audio/*.mp3
 data/audio/*.wav
 .DS_Store
 *.log
+docs/
