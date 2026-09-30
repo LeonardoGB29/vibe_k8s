@@ -1,0 +1,25 @@
+{
+  "name": "load",
+  "date": "2026-09-30T05:10:05+00:00",
+  "vus": 300,
+  "duration_seconds": 423.9,
+  "requests": 0,
+  "requests_per_second": 0.0,
+  "error_rate": 0.0,
+  "p50_ms": null,
+  "p95_ms": null,
+  "p99_ms": null,
+  "hls_segment_p95_ms": null,
+  "thresholds_passed": false,
+  "thresholds": {
+    "http_req_duration": {
+      "p(95)<500": true
+    },
+    "http_req_failed": {
+      "rate<0.01": false
+    },
+    "hls_segment_ms": {
+      "p(95)<400": true
+    }
+  }
+}

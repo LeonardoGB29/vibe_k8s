@@ -1,0 +1,22 @@
+{
+  "name": "stress",
+  "date": "2026-09-30T05:37:26+00:00",
+  "vus": 1500,
+  "duration_seconds": 484.46,
+  "requests": 0,
+  "requests_per_second": 0.0,
+  "error_rate": 0.0,
+  "p50_ms": null,
+  "p95_ms": null,
+  "p99_ms": null,
+  "hls_segment_p95_ms": null,
+  "thresholds_passed": false,
+  "thresholds": {
+    "http_req_failed": {
+      "rate<0.05": false
+    },
+    "http_req_duration": {
+      "p(95)<1500": true
+    }
+  }
+}

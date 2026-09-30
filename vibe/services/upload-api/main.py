@@ -101,6 +101,7 @@ def _process_upload(
     db.add(track)
     db.commit()
     queue.enqueue(track_id)
+    queue.invalidate_catalog()
     UPLOADS.inc()
     return TrackOut.from_model(track)
 

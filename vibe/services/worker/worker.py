@@ -170,6 +170,10 @@ def process(track_id: str) -> None:
         log.warning("Track %s no existe, se descarta", track_id)
         return
     set_status(track_id, "processing", worker=POD_NAME, error=None)
+    try:
+        r.incr("vibe:catalog:version")
+    except redis.RedisError:
+        pass
     tmp = Path(tempfile.mkdtemp(prefix="vibe-"))
     try:
         src = tmp / ("original" + Path(track["raw_key"]).suffix)
@@ -183,6 +187,10 @@ def process(track_id: str) -> None:
         prefix = f"tracks/{track_id}"
         upload_dir(out, prefix)
         set_status(track_id, "ready", duration_sec=duration, hls_prefix=prefix, waveform=json.dumps(peaks))
+        try:
+            r.incr("vibe:catalog:version")
+        except redis.RedisError:
+            pass
         log.info("Track %s listo (%.1fs, %s)", track_id, duration, ",".join(BITRATES))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
@@ -212,6 +220,7 @@ def main() -> None:
             JOBS.labels("error").inc()
             try:
                 set_status(track_id, "failed", error=str(exc)[:1000])
+                r.incr("vibe:catalog:version")
             except Exception:  # noqa: BLE001
                 log.exception("No se pudo marcar como failed")
         finally:

@@ -47,3 +47,21 @@ puede reprogramarse con el almacenamiento local del cluster kind.
 Al detener una prueba, el servidor cancela su árbol de procesos y ejecuta la restauración
 correspondiente para nodo, rolling update u OOM. El servidor escucha únicamente en
 `127.0.0.1`; debe mantenerse así porque las acciones modifican el cluster local.
+
+# Requisitos y ejecución rápida
+
+Solo para visualizar: Python 3.9 o superior y `kubectl` configurado. El servidor usa la biblioteca estándar de Python; `metrics-server` habilita las métricas de uso. Si falta una métrica, el dashboard debe indicar N/A.
+
+Para ejecutar todas las pruebas: Python 3.10 o superior, Docker Desktop/Docker, Kind, `kubectl`, GNU Make, k6, Bash (Git Bash en Windows) y `curl` para los sondeos de resiliencia. Las pruebas de carga de archivos requieren audios en `vibe/data/audio`; se pueden generar con `make gen-audio`. Para escenarios que reinician nodos se necesita acceso a los contenedores Kind desde Docker.
+
+Desde `k8s-web`:
+
+```bash
+python server.py
+python server.py --ns vibe --port 8085
+python server.py --ns staging --vibe-dir ../vibe --status-script=
+```
+
+`--vibe-dir` permite indicar otra ubicación del proyecto y por defecto se mantiene la carpeta hermana `../vibe`. `--ns` se aplica a las consultas Kubernetes y a los objetivos Make invocados por el panel. El script de terminal integrado fija `vibe`, por lo que se omite en otros namespaces.
+
+Desde `vibe/`: `make k6-load`, `make k6-stress`, `make k6-spike`, `make k6-users VUS=500 DURATION=3m` y `make k6-ramp`. `k6-users` sigue usando concurrencia fija; `k6-ramp` añade subida gradual hasta 1200 VUs. Las pruebas conservan salida k6 normal y guardan JSON en `vibe/results/k6/`.

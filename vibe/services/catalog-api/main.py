@@ -1,21 +1,39 @@
 import logging
+import json
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from prometheus_fastapi_instrumentator import Instrumentator
 from sqlalchemy import func, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, load_only
 
 import config
 from db import Base, engine, get_session, wait_for_db
 from models import Track
 import job_queue as queue
-from schemas import Stats, TrackOut
+from schemas import Stats, TrackDetail, TrackListItem, TrackOut
 import storage
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("vibe.catalog-api")
+
+try:
+    from prometheus_client import Counter, Gauge
+
+    CATALOG_CACHE = Counter("vibe_catalog_cache_total", "Resultados de cache del catálogo", ["result"])
+    DB_POOL_SIZE = Gauge("vibe_catalog_db_pool_size", "Conexiones base del pool SQLAlchemy")
+    DB_POOL_CHECKED_OUT = Gauge("vibe_catalog_db_pool_checked_out", "Conexiones actualmente prestadas")
+    DB_POOL_CHECKED_IN = Gauge("vibe_catalog_db_pool_checked_in", "Conexiones disponibles en el pool")
+    DB_POOL_OVERFLOW = Gauge("vibe_catalog_db_pool_overflow", "Conexiones por encima del tamaño base")
+    DB_POOL_CAPACITY = Gauge("vibe_catalog_db_pool_capacity", "Capacidad máxima configurada del pool")
+    DB_POOL_SIZE.set_function(lambda: engine.pool.size())
+    DB_POOL_CHECKED_OUT.set_function(lambda: engine.pool.checkedout())
+    DB_POOL_CHECKED_IN.set_function(lambda: engine.pool.checkedin())
+    DB_POOL_OVERFLOW.set_function(lambda: engine.pool.overflow())
+    DB_POOL_CAPACITY.set(config.DB_POOL_SIZE + config.DB_MAX_OVERFLOW)
+except (ImportError, AttributeError):
+    log.warning("No se pudieron registrar métricas del pool SQLAlchemy")
 
 
 @asynccontextmanager
@@ -54,23 +72,50 @@ def readyz(db: Session = Depends(get_session)):
 
 
 # ---------- Catálogo ----------
-@app.get("/api/tracks", response_model=list[TrackOut])
+@app.get("/api/tracks", response_model=list[TrackListItem])
 def list_tracks(
     q: str | None = None,
     status: str | None = None,
     limit: int = 200,
     db: Session = Depends(get_session),
 ):
-    stmt = select(Track).order_by(Track.created_at.desc()).limit(min(limit, 1000))
+    limit = max(1, min(limit, 1000))
+    cache_key = None
+    try:
+        version = queue.r.get("vibe:catalog:version") or "0"
+        cache_key = f"vibe:catalog:v{version}:list:{limit}:{status or ''}:{q or ''}"
+        cached = queue.r.get(cache_key)
+        if cached:
+            CATALOG_CACHE.labels("hit").inc()
+            return json.loads(cached)
+        CATALOG_CACHE.labels("miss").inc()
+    except Exception as exc:  # noqa: BLE001 - Redis es optimización, no requisito
+        log.debug("Cache de catálogo no disponible: %s", exc)
+        try:
+            CATALOG_CACHE.labels("error").inc()
+        except NameError:
+            pass
+        cache_key = None
+
+    stmt = select(Track).options(load_only(
+        Track.id, Track.title, Track.artist, Track.album, Track.status,
+        Track.duration_sec, Track.created_at,
+    )).order_by(Track.created_at.desc()).limit(limit)
     if q:
         like = f"%{q}%"
         stmt = stmt.where((Track.title.ilike(like)) | (Track.artist.ilike(like)) | (Track.album.ilike(like)))
     if status:
         stmt = stmt.where(Track.status == status)
-    return [TrackOut.from_model(t) for t in db.scalars(stmt)]
+    result = [TrackListItem.from_model(t).model_dump(mode="json") for t in db.scalars(stmt)]
+    if cache_key:
+        try:
+            queue.r.setex(cache_key, config.CATALOG_CACHE_TTL, json.dumps(result))
+        except Exception as exc:  # noqa: BLE001
+            log.debug("No se pudo guardar cache de catálogo: %s", exc)
+    return result
 
 
-@app.get("/api/tracks/{track_id}", response_model=TrackOut)
+@app.get("/api/tracks/{track_id}", response_model=TrackDetail)
 def get_track(track_id: str, db: Session = Depends(get_session)):
     track = db.get(Track, track_id)
     if not track:
@@ -88,6 +133,7 @@ def delete_track(track_id: str, db: Session = Depends(get_session)):
         storage.delete_prefix(config.BUCKET_HLS, track.hls_prefix)
     db.delete(track)
     db.commit()
+    queue.invalidate_catalog()
 
 
 @app.get("/api/stats", response_model=Stats)

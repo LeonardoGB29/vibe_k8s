@@ -19,14 +19,15 @@ import subprocess
 import threading
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait as wait_futures
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).parent
 VIBE_DIR = HERE.parent / "vibe"
-STATE = {"data": None, "error": None, "updated": 0, "script": "", "traffic_prev": {}}
+NS_NAME = re.compile(r"^[a-z0-9]([-a-z0-9]*[a-z0-9])?$|^[a-z0-9]$")
+STATE = {"data": None, "error": None, "updated": 0, "last_success": 0, "script": "", "traffic_prev": {}}
 ARGS = None
 
 ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
@@ -61,6 +62,11 @@ TEST_CATALOG = [
             {"name": "duration", "label": "Duración", "type": "duration", "default": "3m", "placeholder": "3m"},
             {"name": "repetitions", "label": "Repeticiones", "type": "number", "default": 1, "min": 1, "max": 3},
         ],
+    },
+    {
+        "id": "ramp", "group": "Rendimiento", "title": "Carga gradual hasta 1200",
+        "description": "Aumenta la concurrencia por etapas para observar cuándo empieza la degradación.",
+        "duration": "5 min 30 s", "destructive": False, "params": [],
     },
     {
         "id": "worker", "group": "Escalabilidad", "title": "Worker y KEDA",
@@ -110,7 +116,7 @@ TEST_CATALOG = [
     },
     {
         "id": "oom", "group": "Resiliencia", "title": "Límite de memoria",
-        "description": "Reduce la memoria del worker, encola un audio y verifica OOMKilled.",
+        "description": "Limita el worker a 64 MiB, aplica carga de memoria controlada y verifica OOMKilled.",
         "duration": "Hasta 4 min", "destructive": True,
         "confirm": "El worker entrará en OOMKilled. Después usa la acción Restaurar memoria.",
         "params": [],
@@ -123,6 +129,42 @@ TEST_CATALOG = [
 ]
 TEST_BY_ID = {item["id"]: item for item in TEST_CATALOG}
 STATELESS_APPS = {"frontend", "catalog-api", "upload-api", "stream-api", "worker"}
+K6_TEST_IDS = {"load": "load", "stress": "stress", "spike": "spike", "users": "users", "ramp": "ramp"}
+
+
+def load_k6_results(vibe_dir=None, limit=20):
+    directory = Path(vibe_dir or VIBE_DIR) / "results" / "k6"
+    if not directory.is_dir():
+        return []
+    results = []
+    for path in sorted(directory.glob("*.json"), key=lambda p: p.stat().st_mtime, reverse=True):
+        try:
+            value = json.loads(path.read_text(encoding="utf-8"))
+            if isinstance(value, dict) and value.get("name"):
+                value["file"] = path.name
+                results.append(value)
+        except (OSError, ValueError):
+            continue
+        if len(results) >= limit:
+            break
+    return results
+
+
+def run_has_k6_slo_failure(test_id, started_epoch, results=None):
+    expected_name = K6_TEST_IDS.get(test_id)
+    if not expected_name:
+        return False
+    candidates = load_k6_results(limit=50) if results is None else results
+    for result in candidates:
+        if result.get("name") != expected_name or result.get("thresholds_passed") is not False:
+            continue
+        try:
+            result_epoch = datetime.fromisoformat(result["date"].replace("Z", "+00:00")).timestamp()
+        except (KeyError, ValueError, TypeError):
+            continue
+        if result_epoch >= started_epoch:
+            return True
+    return False
 
 
 def test_catalog_view():
@@ -205,11 +247,13 @@ def normalize_params(test_id, supplied):
 
 
 def make_command(test_id, params):
+    ns = ARGS.ns if ARGS else "vibe"
     commands = {
         "load": ["make", "--silent", "k6-load"],
         "stress": ["make", "--silent", "k6-stress"],
         "spike": ["make", "--silent", "k6-spike"],
         "users": ["make", "--silent", "k6-users", f"VUS={params.get('vus')}", f"DURATION={params.get('duration')}"],
+        "ramp": ["make", "--silent", "k6-ramp"],
         "worker": ["make", "--silent", "worker-scale", f"UPLOADS={params.get('uploads')}"],
         "pod_failure": ["make", "--silent", "chaos-pod", f"INTERVAL={params.get('interval')}", f"TIMES={params.get('times')}", f"APP={params.get('app')}"],
         "node_failure": ["make", "--silent", "chaos-node", f"NODE={params.get('node')}", f"DOWN={params.get('down')}"],
@@ -218,7 +262,7 @@ def make_command(test_id, params):
         "oom": ["make", "--silent", "chaos-oom"],
         "oom_restore": ["make", "--silent", "chaos-oom-restore"],
     }
-    return commands[test_id]
+    return commands[test_id] + [f"NS={ns}"]
 
 
 class TestManager:
@@ -245,6 +289,16 @@ class TestManager:
             if current and current.get("started_epoch"):
                 end = current.get("ended_epoch") or time.time()
                 current["elapsed_seconds"] = round(end - current["started_epoch"], 1)
+                result_name = K6_TEST_IDS.get(current.get("test_id"))
+                if result_name:
+                    def is_current_result(result):
+                        try:
+                            result_time = datetime.fromisoformat(result["date"].replace("Z", "+00:00")).timestamp()
+                            return result_time >= current["started_epoch"] and result.get("name") == result_name
+                        except (KeyError, ValueError, TypeError):
+                            return False
+                    matches = [r for r in load_k6_results(limit=50) if is_current_result(r)]
+                    current["k6_summary"] = matches[0] if matches else None
             if current:
                 current.pop("started_epoch", None)
                 current.pop("ended_epoch", None)
@@ -330,7 +384,7 @@ class TestManager:
             self._log("sistema", f"Repetición {repetition} de {total}")
         companion = None
         if params.get("with_load"):
-            companion = self._spawn(["make", "--silent", "k6-load"], "carga")
+            companion = self._spawn(["make", "--silent", "k6-load", f"NS={ARGS.ns if ARGS else 'vibe'}"], "carga")
             self._set(phase="Estabilizando carga simultánea")
             if self._sleep_cancelable(10):
                 return [self._wait(*companion)]
@@ -346,10 +400,24 @@ class TestManager:
 
     def _prepare(self, test_id, params):
         context = {}
+        try:
+            cluster = subprocess.run(
+                ["kubectl", "get", "namespace", ARGS.ns if ARGS else "vibe", "--request-timeout=10s"],
+                cwd=VIBE_DIR, capture_output=True, text=True, timeout=15,
+            )
+        except subprocess.TimeoutExpired as exc:
+            raise RuntimeError(
+                "El API de Kubernetes no responde. Espera a que Docker Desktop se recupere o reinicia el control-plane."
+            ) from exc
+        if cluster.returncode:
+            detail = cluster.stderr.strip().splitlines()
+            raise RuntimeError(
+                "El cluster no está disponible: " + (detail[-1] if detail else "namespace vibe inaccesible")
+            )
         if test_id == "node_failure":
             result = subprocess.run(
                 [
-                    "kubectl", "-n", "vibe", "get", "pods",
+                    "kubectl", "-n", ARGS.ns if ARGS else "vibe", "get", "pods",
                     f"--field-selector=spec.nodeName={params['node']}", "-o", "json",
                 ],
                 cwd=VIBE_DIR, capture_output=True, text=True, timeout=20,
@@ -389,7 +457,7 @@ class TestManager:
                 )
         elif test_id == "rolling":
             result = subprocess.run(
-                ["kubectl", "-n", "vibe", "get", "deployment/frontend", "-o", "jsonpath={.spec.template.spec.containers[0].image}"],
+                ["kubectl", "-n", ARGS.ns if ARGS else "vibe", "get", "deployment/frontend", "-o", "jsonpath={.spec.template.spec.containers[0].image}"],
                 cwd=VIBE_DIR, capture_output=True, text=True, timeout=20,
             )
             if result.returncode:
@@ -403,15 +471,15 @@ class TestManager:
                 subprocess.run(["docker", "start", params["node"]], capture_output=True, timeout=30, cwd=VIBE_DIR)
             elif test_id == "rolling" and context.get("original_image"):
                 subprocess.run(
-                    ["kubectl", "-n", "vibe", "set", "image", "deployment/frontend", f"frontend={context['original_image']}"],
+                    ["kubectl", "-n", ARGS.ns if ARGS else "vibe", "set", "image", "deployment/frontend", f"frontend={context['original_image']}"],
                     capture_output=True, timeout=30, cwd=VIBE_DIR,
                 )
                 subprocess.run(
-                    ["kubectl", "-n", "vibe", "rollout", "status", "deployment/frontend", "--timeout=180s"],
+                    ["kubectl", "-n", ARGS.ns if ARGS else "vibe", "rollout", "status", "deployment/frontend", "--timeout=180s"],
                     capture_output=True, timeout=190, cwd=VIBE_DIR,
                 )
             elif test_id == "oom" and abnormal:
-                subprocess.run(["make", "--silent", "chaos-oom-restore"], capture_output=True, timeout=190, cwd=VIBE_DIR)
+                subprocess.run(["make", "--silent", "chaos-oom-restore", f"NS={ARGS.ns if ARGS else 'vibe'}"], capture_output=True, timeout=190, cwd=VIBE_DIR)
         except Exception as exc:  # noqa: BLE001
             self._log("sistema", f"Aviso durante restauración: {exc}")
 
@@ -437,8 +505,13 @@ class TestManager:
                 codes.extend(self._run_once(test_id, params, repetition, repetitions))
             cancelled = self.cancel_event.is_set()
             hard_failures = [code for code in codes if code not in (0, 99, 130)]
+            k6_slo_failed = run_has_k6_slo_failure(
+                test_id, self.current.get("started_epoch", 0) if self.current else 0
+            )
             if cancelled:
                 final_status, final_outcome = "cancelled", "cancelled"
+            elif k6_slo_failed:
+                final_status, final_outcome = "completed", "slo_failed"
             elif hard_failures:
                 final_status, final_outcome = "failed", "error"
             elif 99 in codes:
@@ -519,7 +592,10 @@ TEST_MANAGER = TestManager()
 
 # ---------- kubectl ----------
 def kubectl(*args, timeout=10):
-    out = subprocess.run(["kubectl", *args], capture_output=True, text=True, timeout=timeout)
+    command = ["kubectl", *args]
+    if not any(str(arg).startswith("--request-timeout=") for arg in args):
+        command.append("--request-timeout=4s")
+    out = subprocess.run(command, capture_output=True, text=True, timeout=min(timeout, 5))
     if out.returncode != 0:
         msg = out.stderr.strip().splitlines()
         raise RuntimeError(msg[-1] if msg else "kubectl falló")
@@ -612,7 +688,8 @@ def collect(ns):
             "ready": any(c["type"] == "Ready" and c["status"] == "True" for c in n["status"].get("conditions", [])),
             "version": n["status"].get("nodeInfo", {}).get("kubeletVersion", ""),
             "cpu_alloc_m": cpu_m(alloc.get("cpu")), "mem_alloc_mi": mem_mi(alloc.get("memory")),
-            "cpu_m": top_nodes.get(name, {}).get("cpu_m", 0), "mem_mi": top_nodes.get(name, {}).get("mem_mi", 0),
+            "cpu_m": top_nodes[name]["cpu_m"] if name in top_nodes else None,
+            "mem_mi": top_nodes[name]["mem_mi"] if name in top_nodes else None,
         })
 
     pods = []
@@ -637,7 +714,8 @@ def collect(ns):
             "image": c0.get("image", ""), "owner_kind": owner.get("kind", ""), "owner": owner.get("name", ""), "pvcs": claims,
             "req_cpu_m": cpu_m(res.get("requests", {}).get("cpu")), "req_mem_mi": mem_mi(res.get("requests", {}).get("memory")),
             "lim_cpu_m": cpu_m(res.get("limits", {}).get("cpu")), "lim_mem_mi": mem_mi(res.get("limits", {}).get("memory")),
-            "cpu_m": top_pods.get(name, {}).get("cpu_m", 0), "mem_mi": top_pods.get(name, {}).get("mem_mi", 0),
+            "cpu_m": top_pods[name]["cpu_m"] if name in top_pods else None,
+            "mem_mi": top_pods[name]["mem_mi"] if name in top_pods else None,
         })
 
     workloads = []
@@ -704,34 +782,84 @@ def collect(ns):
     events = [{"type": e.get("type", ""), "reason": e.get("reason", ""), "object": f"{e['involvedObject'].get('kind', '')}/{e['involvedObject'].get('name', '')}",
                "message": (e.get("message") or "")[:160], "age": age(e.get("lastTimestamp") or e.get("eventTime"))} for e in events]
 
+    collect_executor = ThreadPoolExecutor(max_workers=2)
+    traffic_future = collect_executor.submit(collect_traffic, ns, pods)
+    deps_future = collect_executor.submit(collect_dependencies, ns, pods, top_pods)
+    completed, pending = wait_futures([traffic_future, deps_future], timeout=3.2)
+    fallback_traffic = {"pods": [], "services": {}, "rps": 0, "seg_ps": 0, "mbps": 0, "total": 0}
     try:
-        traffic = collect_traffic(ns, pods)
+        traffic = traffic_future.result() if traffic_future in completed else fallback_traffic
     except Exception:  # noqa: BLE001
-        traffic = {"pods": [], "rps": 0, "seg_ps": 0, "mbps": 0, "total": 0}
+        traffic = fallback_traffic
+    try:
+        deps = deps_future.result() if deps_future in completed else {}
+    except Exception:  # noqa: BLE001
+        deps = {}
+    for future in pending:
+        future.cancel()
+    collect_executor.shutdown(wait=False, cancel_futures=True)
+    service_metrics = {}
+    for app in ("catalog-api", "upload-api", "stream-api"):
+        wl = next((w for w in workloads if w["name"] == app), None)
+        perf = traffic.get("services", {}).get(app, {})
+        service_pods = [p for p in pods if p["app"] == app]
+        usage_known = bool(service_pods) and all(p["name"] in top_pods for p in service_pods)
+        service_metrics[app] = {
+            "current": wl["ready"] if wl else 0, "desired": wl["desired"] if wl else 0,
+            "cpu_m": sum(top_pods[p["name"]]["cpu_m"] for p in service_pods) if usage_known else None,
+            "mem_mi": sum(top_pods[p["name"]]["mem_mi"] for p in service_pods) if usage_known else None,
+            **perf,
+        }
     ctx = safe_str(lambda: kubectl("config", "current-context").strip())
     return {"ns": ns, "context": ctx, "time": datetime.now().strftime("%H:%M:%S"), "metrics_ok": bool(top_pods),
             "nodes": nodes, "pods": pods, "workloads": workloads, "services": services, "ingresses": ingresses,
-            "hpas": hpas, "scaled": scaled, "pvcs": pvcs, "configs": configs, "events": events, "traffic": traffic}
+            "hpas": hpas, "scaled": scaled, "pvcs": pvcs, "configs": configs, "events": events,
+            "traffic": traffic, "service_metrics": service_metrics, "dependencies": deps}
 
 
 # ---------- tráfico: /metrics de cada pod api vía el proxy del API server ----------
+def histogram_p95_ms(bucket_counts):
+    finite = sorted((float(bound), count) for bound, count in bucket_counts.items() if bound != "+Inf")
+    total = bucket_counts.get("+Inf", max((count for _, count in finite), default=0.0))
+    if not total:
+        return None
+    for bound, count in finite:
+        if count >= total * .95:
+            return bound * 1000
+    return None
+
+
 def pod_metrics(ns, pod, port=8000):
-    txt = kubectl("get", "--raw", f"/api/v1/namespaces/{ns}/pods/{pod}:{port}/proxy/metrics", timeout=5)
-    req = seg = byts = 0.0
-    by_handler = {}
+    txt = kubectl("get", "--raw", f"/api/v1/namespaces/{ns}/pods/{pod}:{port}/proxy/metrics",
+                  "--request-timeout=1500ms", timeout=2)
+    req = errors = seg = byts = 0.0
+    buckets = {}
+    pool = {}
     for line in txt.splitlines():
-        if line.startswith("http_requests_total{"):
-            labels, val = line.rsplit(" ", 1)
+        if line.startswith("http_requests_total{") or line.startswith("http_requests_total "):
+            labels, val = (line.split(" ", 1) + [""])[:2]
             if 'handler="/metrics"' in labels:
                 continue
-            req += float(val)
-            h = labels.split('handler="')[1].split('"')[0] if 'handler="' in labels else "?"
-            by_handler[h] = by_handler.get(h, 0.0) + float(val)
+            value = float(val)
+            req += value
+            status_match = re.search(r'(?:status|status_code)="([0-9]+)', labels)
+            if status_match and status_match.group(1)[0] in "45":
+                errors += value
+        elif line.startswith("http_request_duration_seconds_bucket{"):
+            labels, val = line.rsplit(" ", 1)
+            le_match = re.search(r'le="([^"]+)"', labels)
+            if le_match:
+                le = le_match.group(1)
+                buckets[le] = buckets.get(le, 0.0) + float(val)
         elif line.startswith("vibe_stream_segments_total "):
             seg = float(line.split()[1])
         elif line.startswith("vibe_stream_bytes_total "):
             byts = float(line.split()[1])
-    return {"req": req, "seg": seg, "bytes": byts, "by_handler": by_handler}
+        elif line.startswith("vibe_catalog_db_pool_"):
+            name, value = line.split()[:2]
+            pool[name.removeprefix("vibe_catalog_db_pool_")] = float(value)
+    return {"req": req, "errors": errors, "seg": seg, "bytes": byts, "buckets": buckets,
+            "p95_ms": histogram_p95_ms(buckets), "pool": pool}
 
 
 def collect_traffic(ns, pods):
@@ -739,28 +867,115 @@ def collect_traffic(ns, pods):
     prev = STATE["traffic_prev"]
     api_ports = {"api": 8000, "catalog-api": 8000, "upload-api": 8001, "stream-api": 8002}
     api_pods = [p for p in pods if p["app"] in api_ports and p["ready"]]
-    with ThreadPoolExecutor(8) as ex:
-        futs = {p["name"]: ex.submit(pod_metrics, ns, p["name"], api_ports[p["app"]]) for p in api_pods}
-    rows, cur = [], {}
-    for name, fut in futs.items():
+    ex = ThreadPoolExecutor(max_workers=min(20, max(1, len(api_pods))))
+    futs = {ex.submit(pod_metrics, ns, p["name"], api_ports[p["app"]]): p for p in api_pods}
+    done, pending = wait_futures(futs, timeout=2.5)
+    rows, cur, by_service = [], {}, {}
+    for fut in pending:
+        fut.cancel()
+    for fut in done:
+        p = futs[fut]
+        name = p["name"]
         try:
             m = fut.result()
         except Exception:  # noqa: BLE001
             continue
         cur[name] = (now, m)
         rps = seg_ps = mbps = 0.0
+        error_rate = None
         if name in prev:
             t0, m0 = prev[name]
             dt = max(0.5, now - t0)
             rps = max(0.0, (m["req"] - m0["req"]) / dt)
             seg_ps = max(0.0, (m["seg"] - m0["seg"]) / dt)
             mbps = max(0.0, (m["bytes"] - m0["bytes"]) / dt * 8 / 1e6)
+            delta_req = max(0.0, m["req"] - m0["req"])
+            error_rate = max(0.0, m["errors"] - m0["errors"]) / delta_req if delta_req else 0.0
+        app = p["app"]
+        service = by_service.setdefault(app, {"rps": 0.0, "errors": 0.0, "requests": 0.0, "buckets": {}, "pool": {}})
+        service["rps"] += rps
+        if name in prev:
+            service["requests"] += max(0.0, m["req"] - prev[name][1]["req"])
+            service["errors"] += max(0.0, m["errors"] - prev[name][1]["errors"])
+        old_buckets = prev[name][1].get("buckets", {}) if name in prev else {}
+        for bound, value in m.get("buckets", {}).items():
+            delta = max(0.0, value - old_buckets.get(bound, 0.0)) if name in prev else value
+            service["buckets"][bound] = service["buckets"].get(bound, 0.0) + delta
+        if app == "catalog-api":
+            for key, value in m.get("pool", {}).items():
+                service["pool"][key] = service["pool"].get(key, 0.0) + value
         rows.append({"pod": name, "node": next((p["node"] for p in api_pods if p["name"] == name), ""),
-                     "rps": round(rps, 1), "seg_ps": round(seg_ps, 1), "mbps": round(mbps, 2), "total": int(m["req"])})
+                     "app": app, "rps": round(rps, 1), "error_rate": error_rate,
+                     "seg_ps": round(seg_ps, 1), "mbps": round(mbps, 2), "total": int(m["req"])})
     STATE["traffic_prev"] = cur
     rows.sort(key=lambda r: r["pod"])
+    services = {}
+    for name, values in by_service.items():
+        p95_ms = histogram_p95_ms(values["buckets"])
+        services[name] = {
+            "rps": round(values["rps"], 2),
+            "error_rate": values["errors"] / values["requests"] if values["requests"] else None,
+            "p95_ms": p95_ms,
+            "pool": values["pool"] if values["pool"] else None,
+        }
+    ex.shutdown(wait=False, cancel_futures=True)
     return {"pods": rows, "rps": round(sum(r["rps"] for r in rows), 1), "seg_ps": round(sum(r["seg_ps"] for r in rows), 1),
-            "mbps": round(sum(r["mbps"] for r in rows), 2), "total": sum(r["total"] for r in rows)}
+            "mbps": round(sum(r["mbps"] for r in rows), 2), "total": sum(r["total"] for r in rows), "services": services}
+
+
+def collect_dependencies(ns, pods, top_pods):
+    specs = {"postgres": "PostgreSQL", "redis": "Redis", "minio": "SeaweedFS/MinIO"}
+    result = {}
+    for app, label in specs.items():
+        pod = next((item for item in pods if item["app"] == app and item["state"] != "Terminating"), None)
+        usage = top_pods.get(pod["name"], {}) if pod else {}
+        result[app] = {
+            "label": label,
+            "pod": pod["name"] if pod else None,
+            "state": pod["state"] if pod else "N/A",
+            "ready": pod["ready"] if pod else False,
+            "cpu_m": usage.get("cpu_m"),
+            "mem_mi": usage.get("mem_mi"),
+            "cpu_limit_m": pod.get("lim_cpu_m") if pod else None,
+            "mem_limit_mi": pod.get("lim_mem_mi") if pod else None,
+            "connections_active": None,
+            "connections_total": None,
+            "queue_length": None,
+        }
+
+    def query(app, command):
+        pod = result[app]["pod"]
+        if not pod:
+            return None
+        try:
+            proc = subprocess.run(
+                ["kubectl", "-n", ns, "exec", pod, "--", *command],
+                capture_output=True, text=True, timeout=2.5,
+            )
+            return proc.stdout.strip() if proc.returncode == 0 else None
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    ex = ThreadPoolExecutor(max_workers=2)
+    f_redis = ex.submit(query, "redis", ["redis-cli", "LLEN", "transcode"])
+    f_pg = ex.submit(query, "postgres", ["psql", "-U", "vibe", "-d", "vibe", "-Atc",
+                                           "SELECT count(*) FILTER (WHERE state = 'active'), count(*) FROM pg_stat_activity"])
+    done, pending = wait_futures([f_redis, f_pg], timeout=2.8)
+    redis_value = f_redis.result() if f_redis in done else None
+    pg_value = f_pg.result() if f_pg in done else None
+    for future in pending:
+        future.cancel()
+    ex.shutdown(wait=False, cancel_futures=True)
+    if redis_value and redis_value.isdigit():
+        result["redis"]["queue_length"] = int(redis_value)
+    if pg_value:
+        try:
+            active, total = (int(value) for value in pg_value.split("|", 1))
+            result["postgres"]["connections_active"] = active
+            result["postgres"]["connections_total"] = total
+        except (ValueError, TypeError):
+            pass
+    return result
 
 
 def safe(fut):
@@ -778,13 +993,18 @@ def safe_str(fn):
 
 
 def run_status_script():
-    if not ARGS.status_script:
+    if not ARGS or not ARGS.status_script:
         return ""
     path = Path(ARGS.status_script)
+    if ARGS.ns != "vibe" and path.resolve() == (VIBE_DIR / "tools" / "cluster-status.sh").resolve():
+        return "(terminal omitida: cluster-status.sh fija el namespace vibe)"
     if not path.exists():
         return f"(no se encontró {path})"
     try:
-        out = subprocess.run(["bash", str(path)], capture_output=True, text=True, timeout=25, cwd=path.parent.parent)
+        env = os.environ.copy()
+        env["NS"] = ARGS.ns
+        out = subprocess.run(["bash", str(path)], capture_output=True, text=True, timeout=25,
+                             cwd=path.parent.parent, env=env)
         return out.stdout + out.stderr
     except Exception as exc:  # noqa: BLE001
         return f"(error ejecutando el script: {exc})"
@@ -796,6 +1016,7 @@ def refresher():
         try:
             STATE["data"] = collect(ARGS.ns)
             STATE["error"] = None
+            STATE["last_success"] = time.time()
         except Exception as exc:  # noqa: BLE001
             STATE["error"] = str(exc)
         if n % 3 == 0:
@@ -841,11 +1062,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path.startswith("/api/cluster"):
-            self.send_json(200, {"data": STATE["data"], "error": STATE["error"], "script": STATE["script"]})
+            self.send_json(200, {"data": STATE["data"], "error": STATE["error"], "script": STATE["script"],
+                                 "updated": STATE["updated"], "last_success": STATE["last_success"]})
         elif self.path == "/api/tests/catalog":
             self.send_json(200, {"tests": test_catalog_view()})
         elif self.path == "/api/tests/status":
             self.send_json(200, TEST_MANAGER.status())
+        elif self.path == "/api/k6/results":
+            self.send_json(200, {"results": load_k6_results()})
         elif self.path == "/" or self.path.startswith("/index"):
             self.send(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
         else:
@@ -874,14 +1098,23 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global ARGS
+    global ARGS, VIBE_DIR
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8085)
     ap.add_argument("--ns", default="vibe")
     ap.add_argument("--interval", type=float, default=2.0)
-    ap.add_argument("--status-script", default=str(HERE.parent / "vibe" / "tools" / "cluster-status.sh"),
+    ap.add_argument("--vibe-dir", type=Path, default=HERE.parent / "vibe",
+                    help="raíz del proyecto VIBE (por defecto, carpeta hermana)")
+    ap.add_argument("--status-script", default=None,
                     help="script cuya salida se muestra en la pestaña Terminal ('' para desactivar)")
     ARGS = ap.parse_args()
+    if len(ARGS.ns) > 63 or not NS_NAME.fullmatch(ARGS.ns):
+        ap.error("--ns debe ser un nombre de namespace Kubernetes válido")
+    if ARGS.port < 1 or ARGS.port > 65535 or ARGS.interval <= 0:
+        ap.error("--port debe estar entre 1 y 65535 y --interval debe ser positivo")
+    VIBE_DIR = ARGS.vibe_dir.expanduser().resolve()
+    if ARGS.status_script is None:
+        ARGS.status_script = str(VIBE_DIR / "tools" / "cluster-status.sh")
     threading.Thread(target=refresher, daemon=True).start()
     print(f"k8s web -> http://localhost:{ARGS.port}   (namespace {ARGS.ns}, Ctrl+C para salir)")
     try:

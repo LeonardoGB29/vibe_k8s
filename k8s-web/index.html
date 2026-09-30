@@ -14,11 +14,11 @@ header{background:var(--card);border-bottom:1px solid var(--line);padding:14px 2
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;font-size:20px;letter-spacing:-.01em}
 .brand svg{width:36px;height:36px;color:var(--blue)}
 .right{margin-left:auto;display:flex;align-items:center;gap:12px;color:var(--muted);font-size:13px}
-.dot{width:10px;height:10px;border-radius:50%;background:var(--ok)}.dot.bad{background:var(--bad)}
+.dot{width:10px;height:10px;border-radius:50%;background:var(--muted)}.dot.warn{background:var(--warn)}.dot.bad{background:var(--bad)}
 nav{display:flex;gap:4px;padding:10px 28px 0;background:var(--card);border-bottom:1px solid var(--line);overflow:auto}
 nav button{border:0;background:none;padding:10px 14px;font:inherit;font-weight:600;color:var(--muted);border-bottom:3px solid transparent;cursor:pointer;white-space:nowrap}
 nav button.on{color:var(--blue);border-color:var(--blue)}
-main{padding:22px 28px 40px;max-width:1500px;margin:0 auto}
+main{padding:22px 28px 40px;max-width:1800px;margin:0 auto}
 .err{background:#fdecea;border:1px solid #f5b5b0;color:var(--bad);padding:12px 16px;border-radius:10px;margin-bottom:16px;font-family:var(--mono);font-size:13px}
 .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:22px}
 .kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px 16px}
@@ -54,6 +54,24 @@ canvas{width:100%;height:120px;display:block}
 .test-card{appearance:none;text-align:left;border:1px solid var(--line);border-radius:12px;background:#fbfdff;padding:13px;cursor:pointer;color:var(--text);font:inherit;transition:.15s}
 .test-card:hover{border-color:#9db9ec;transform:translateY(-1px)}.test-card.on{border:2px solid var(--blue);background:var(--blue-soft);padding:12px}
 .test-card strong{display:block;font-size:14px;margin-bottom:4px}.test-card small{display:block;color:var(--muted);line-height:1.35}.test-card .meta{margin-top:8px;color:var(--blue);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.summary-hero{display:flex;align-items:center;gap:14px;margin:0 0 14px;padding:16px 18px;border:1px solid var(--line);border-radius:14px;background:var(--card)}
+.summary-hero h1{margin:0;font-size:20px}.summary-hero p{margin:3px 0 0;color:var(--muted)}
+.status-mark{width:42px;height:42px;display:grid;place-items:center;border-radius:50%;font-size:22px;font-weight:800;background:#e8f5ee;color:var(--ok);flex:none}
+.status-mark.warn{background:#fff3e0;color:var(--warn)}.status-mark.bad{background:#fdecea;color:var(--bad)}.status-mark.unknown{background:#eef2f7;color:var(--muted)}
+.freshness{margin-left:auto;text-align:right;color:var(--muted);font-size:12px}.freshness b{display:block;color:var(--text)}
+.summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:12px;margin-bottom:16px}
+.inventory-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(225px,1fr));gap:10px}.inventory-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px;min-width:0}.inventory-card h3{font-size:14px;margin:0 0 4px}.inventory-card>strong{font-size:20px}.inventory-card details{margin-top:8px;color:var(--muted);font-size:12px}.inventory-list{max-height:220px;overflow:auto;padding-left:18px}.inventory-list li{margin:4px 0;overflow-wrap:anywhere}
+.service-card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px;min-width:0}.service-card.warn{border-color:#f3c77f}.service-card.bad{border-color:#efaaa5}.service-card h3{margin:0 0 7px;font-size:15px}.service-card .service-top{display:flex;align-items:center;justify-content:space-between;gap:8px}.service-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0}.service-metrics div{background:#f7f9fc;border-radius:8px;padding:7px 9px;min-width:0}.service-metrics b{display:block;font-size:16px;overflow-wrap:anywhere}.service-metrics small{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.service-card details{border-top:1px solid var(--line);padding-top:8px;color:var(--muted);font-size:12px}.service-card summary,details>summary{cursor:pointer;font-weight:700;color:var(--blue)}
+.summary-section{margin-top:16px}.summary-section>h2{display:flex;align-items:center;gap:8px}.diagnostic-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px}.diagnostic-card{border:1px solid var(--line);border-left:4px solid var(--blue2);background:var(--card);border-radius:10px;padding:12px}.diagnostic-card.warn{border-left-color:var(--warn)}.diagnostic-card.bad{border-left-color:var(--bad)}
+.diagnostic-card b{display:block;margin-bottom:3px}.summary-links{display:flex;gap:8px;flex-wrap:wrap}.summary-links button,.header-action{border:1px solid var(--line);background:var(--card);border-radius:8px;padding:8px 11px;color:var(--text);font:inherit;cursor:pointer}.summary-links button:hover,.header-action:hover{border-color:var(--blue);color:var(--blue)}
+body.presentation{font-size:17px}body.presentation main{max-width:1800px}body.presentation .summary-hero{padding:22px}body.presentation .summary-hero h1{font-size:26px}body.presentation .service-metrics b{font-size:19px}body.presentation #tabs{display:none}body.presentation [data-p]:not([data-p="summary"]):not([data-p="arch"]){display:none!important}
+nav [data-t="nodes"],nav [data-t="pods"],nav [data-t="net"],nav [data-t="deps"],nav [data-t="term"]{display:none}
+#tabs [data-t="summary"]{order:1}#tabs [data-t="arch"]{order:2}#tabs [data-t="traffic"]{order:3}#tabs [data-t="scale"]{order:4}#tabs [data-t="tests"]{order:5}#tabs [data-t="events"]{order:6}
+.technical-details{margin-top:14px}
+#run-k6-summary .live-test-metrics,#run-k6-summary>.hint{grid-column:1/-1}
+@media(max-width:760px){header{padding:10px 14px;flex-wrap:wrap}.brand{font-size:17px}.right{gap:6px;font-size:11px}main{padding:14px 12px 28px}nav{padding:6px 8px 0}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.summary-hero{align-items:flex-start;flex-wrap:wrap}.freshness{margin-left:56px;text-align:left}.summary-grid{grid-template-columns:1fr 1fr}.summary-grid .service-card{padding:10px}.two{grid-template-columns:1fr}table{display:block;overflow-x:auto;max-width:100%}.ev{grid-template-columns:42px 85px 1fr}}
+@media(max-width:430px){.summary-grid{grid-template-columns:1fr}.kpi b{font-size:20px}.summary-hero h1{font-size:17px}}
 .form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:14px 0}.field{display:flex;flex-direction:column;gap:5px}.field label{font-size:12px;color:var(--muted);font-weight:700}
 .field input,.field select{width:100%;border:1px solid var(--line);border-radius:9px;background:#fff;padding:9px 10px;color:var(--text);font:13px var(--mono)}
 .field.check{flex-direction:row;align-items:center;background:#f7faff;border:1px solid var(--line);padding:10px;border-radius:9px}.field.check input{width:auto}.field.check label{color:var(--text)}
@@ -64,8 +82,9 @@ canvas{width:100%;height:120px;display:block}
 .artifact-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.artifact{font:11px var(--mono);background:#eef4ff;border:1px solid #ccdafa;border-radius:6px;padding:4px 7px;color:var(--blue)}
 /* arquitectura */
 #arch{width:100%;height:auto;display:block}
+#overview-arch{width:100%;height:auto;display:block;max-height:250px;object-fit:contain;object-position:left center}
 .n-box{fill:#fff;stroke:var(--line);stroke-width:1.2;rx:10}
-.n-box.ing{stroke:var(--blue)}.n-box.svc{stroke:#3b82f6}.n-box.wl{stroke:#1d5fd6;stroke-width:1.6}.n-box.pod{stroke:#9db9ec}.n-box.pod.bad{stroke:var(--bad);stroke-dasharray:4 3}.n-box.pvc{stroke:#7c9cc9}.n-box.hpa{stroke:#8b5cf6;stroke-dasharray:5 3}
+.n-box.ing{stroke:var(--blue)}.n-box.svc{stroke:#3b82f6}.n-box.wl{stroke:#1d5fd6;stroke-width:1.6}.n-box.wl.bad{stroke:var(--bad);stroke-width:2}.n-box.pod{stroke:#9db9ec}.n-box.pod.bad{stroke:var(--bad);stroke-dasharray:4 3}.n-box.pvc{stroke:#7c9cc9}.n-box.hpa{stroke:#8b5cf6;stroke-dasharray:5 3}
 .n-title{font:700 12.5px Manrope,system-ui;fill:var(--text)}.n-sub{font:11px var(--mono);fill:var(--muted)}.n-kind{font:700 9.5px Manrope,system-ui;fill:#fff;letter-spacing:.06em}
 .edge{fill:none;stroke:#b8c9e6;stroke-width:1.6}.edge.hot{stroke:var(--blue);stroke-width:2}
 .col-h{font:700 11px Manrope,system-ui;fill:var(--muted);letter-spacing:.08em}
@@ -74,10 +93,11 @@ canvas{width:100%;height:120px;display:block}
 <body>
 <header>
   <div class="brand"><svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><circle cx="24" cy="24" r="10"/><circle cx="24" cy="24" r="3" fill="currentColor" stroke="none"/><circle cx="24" cy="24" r="18" stroke-width="2.5"/><path d="M24 2v12M24 34v12M2 24h12M34 24h12M8.4 8.4l8.5 8.5M31.1 31.1l8.5 8.5M8.4 39.6l8.5-8.5M31.1 16.9l8.5-8.5"/></svg> Arquitectura del cluster</div>
-  <div class="right"><span class="dot" id="dot"></span></div>
+  <div class="right"><span class="dot" id="dot"></span><span id="live-label">Conectando...</span><span id="updated-label"></span><button class="header-action" id="present-toggle" type="button">Modo presentación</button></div>
 </header>
 <nav id="tabs">
-  <button data-t="arch" class="on">Arquitectura</button>
+  <button data-t="summary" class="on">Resumen</button>
+  <button data-t="arch">Arquitectura</button>
   <button data-t="nodes">Nodos</button>
   <button data-t="pods">Pods</button>
   <button data-t="traffic">Tráfico</button>
@@ -85,11 +105,20 @@ canvas{width:100%;height:120px;display:block}
   <button data-t="net">Red y almacenamiento</button>
   <button data-t="events">Eventos</button>
   <button data-t="tests">Pruebas</button>
+  <button data-t="deps">Dependencias</button>
   <button data-t="term">Terminal</button>
 </nav>
 <main>
-  <div class="err" id="err" hidden></div>
-  <section class="kpis" id="kpis"></section>
+  <div class="err" id="err" hidden><div id="err-message"></div><details><summary>Detalle técnico</summary><pre id="err-detail" style="white-space:pre-wrap;margin:8px 0 0"></pre></details></div>
+  <div data-p="summary">
+    <section class="summary-hero"><div class="status-mark unknown" id="overall-icon">?</div><div><h1 id="overall-title">Comprobando estado del sistema</h1><p id="overall-detail">Esperando métricas del cluster.</p></div><div class="freshness"><b id="freshness-state">Sin datos todavía</b><span id="freshness-time"></span></div></section>
+    <section class="kpis" id="kpis"></section>
+    <div class="summary-section"><h2>Inventario del cluster <span class="hint" id="cluster-context"></span></h2><div class="inventory-grid" id="cluster-inventory"></div><div class="summary-links"><button type="button" data-open-panel="nodes">Detalle de nodos</button><button type="button" data-open-panel="pods">Detalle de pods</button><button type="button" data-open-panel="scale">Workloads y escalado</button><button type="button" data-open-panel="net">Servicios y almacenamiento</button><button type="button" data-open-panel="deps">Dependencias</button><button type="button" data-open-panel="events">Eventos</button><button type="button" data-open-panel="traffic">Rendimiento y tráfico</button></div></div>
+    <div class="summary-section"><h2>Servicios y componentes</h2><div class="summary-grid" id="service-cards"><div class="service-card hint">Cargando componentes...</div></div></div>
+    <div class="summary-section"><h2>Diagnóstico</h2><div class="diagnostic-grid" id="diagnostics"><div class="diagnostic-card">Esperando métricas suficientes.</div></div></div>
+    <div class="summary-section two"><div class="card"><h2>Escalado ahora</h2><div id="summary-scaling" class="summary-grid"></div><div class="summary-links"><button type="button" data-open-panel="scale">Ver HPA y KEDA</button></div></div><div class="card"><h2>Prueba más reciente</h2><div id="summary-test-result" class="hint">Aún no hay resultados de pruebas.</div><div class="summary-links"><button type="button" data-open-panel="tests">Ir a Pruebas</button></div></div></div>
+    <div class="summary-section"><h2>Vista rápida de arquitectura</h2><div class="card"><svg id="overview-arch" xmlns="http://www.w3.org/2000/svg"></svg><div class="summary-links"><button type="button" data-open-panel="arch">Ver arquitectura completa</button><button type="button" data-open-panel="nodes">Nodos</button><button type="button" data-open-panel="pods">Pods</button><button type="button" data-open-panel="deps">Dependencias</button><button type="button" data-open-panel="net">Red y almacenamiento</button><button type="button" data-open-panel="term">Terminal técnica</button></div></div></div>
+  </div>
 
   <div data-p="arch">
     <div class="card"><h2>Flujo de tráfico y recursos del namespace</h2><svg id="arch" xmlns="http://www.w3.org/2000/svg"></svg>
@@ -110,6 +139,7 @@ canvas{width:100%;height:120px;display:block}
       <div class="card"><h2>Peticiones por segundo (réplicas de los microservicios)</h2><canvas id="c-t"></canvas><div class="legend"><span><i style="background:var(--blue)"></i>req/s</span><span><i style="background:var(--warn)"></i>segmentos HLS/s</span></div></div>
       <div class="card"><h2>Reparto entre pods (req/s ahora)</h2><div id="tbars"></div><p class="hint">El Service reparte las peticiones entre los pods listos; si un pod muere o nace, el reparto cambia solo.</p></div>
     </div>
+    <div class="card"><h2>Métricas por servicio</h2><table id="service-metrics"></table></div>
     <div class="card"><h2>Por pod</h2><table id="tpods"></table></div>
   </div>
 
@@ -118,6 +148,7 @@ canvas{width:100%;height:120px;display:block}
       <div class="card"><h2 id="h-a">Réplicas y CPU · HPA</h2><canvas id="c-a"></canvas><div class="legend"><span><i style="background:var(--blue)"></i>réplicas</span><span><i style="background:var(--warn)"></i>CPU %</span></div></div>
       <div class="card"><h2 id="h-b">Réplicas · KEDA</h2><canvas id="c-b"></canvas><div class="legend"><span><i style="background:#8b5cf6"></i>réplicas</span></div></div>
     </div>
+    <div class="card"><h2>Réplicas HPA de las APIs</h2><canvas id="c-api-hpas"></canvas><div class="legend"><span><i style="background:#1d5fd6"></i>catalog actual</span><span><i style="background:#3b82f6"></i>catalog deseado</span><span><i style="background:#d97706"></i>upload actual</span><span><i style="background:#f59e0b"></i>upload deseado</span><span><i style="background:#8b5cf6"></i>stream actual</span><span><i style="background:#a78bfa"></i>stream deseado</span></div></div>
     <div class="card"><h2>Autoescaladores</h2><table id="scalers"></table></div>
     <div class="card"><h2>Workloads</h2><table id="workloads"></table></div>
   </div>
@@ -153,35 +184,43 @@ canvas{width:100%;height:120px;display:block}
         <div id="run-current" hidden>
           <div class="run-head"><strong id="run-title"></strong><span class="st" id="run-status"></span></div>
           <div class="run-info"><div><small>Fase</small><b id="run-phase"></b></div><div><small>Tiempo</small><b id="run-time"></b></div><div><small>Resultado</small><b id="run-outcome"></b></div><div><small>Finalización</small><b id="run-ended"></b></div></div>
+          <div id="run-k6-summary" class="kpis" hidden style="margin-top:12px"></div>
           <div class="artifact-list" id="run-artifacts"></div>
           <div class="actions" style="margin-top:12px"><button class="btn danger" id="test-stop">Detener y restaurar</button></div>
         </div>
       </div>
     </div>
-    <div class="card"><h2>Salida en tiempo real</h2><pre class="live" id="test-log">esperando una prueba...</pre></div>
+    <details class="card technical-details"><summary>Ver logs de la prueba</summary><pre class="live" id="test-log">esperando una prueba...</pre></details>
     <div class="card"><h2>Últimas ejecuciones</h2><div style="overflow:auto"><table id="test-history"></table></div></div>
   </div>
 
+  <div data-p="deps" hidden><div class="card"><h2>Dependencias</h2><p class="hint">Métricas con timeout breve; los valores sin fuente disponible aparecen como N/A.</p><div style="overflow:auto"><table id="dependencies"></table></div></div></div>
   <div data-p="term" hidden><div class="card"><h2>Salida de cluster-status.sh (se actualiza cada ~6 s)</h2><pre class="term" id="term">esperando...</pre></div></div>
 </main>
 
 <script>
 const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const pct=(a,b)=>b?Math.min(100,Math.round(a/b*100)):0;
-const fCpu=m=>m>=1000?(m/1000).toFixed(2)+" cpu":Math.round(m)+"m";
-const fMem=mi=>mi>=1024?(mi/1024).toFixed(1)+" Gi":Math.round(mi)+" Mi";
+const pct=(a,b)=>a==null||b==null||!b?null:Math.min(100,Math.round(a/b*100));
+const fCpu=m=>m==null?"Sin datos":m>=1000?(m/1000).toFixed(2)+" cpu":Math.round(m)+"m";
+const fMem=mi=>mi==null?"Sin datos":mi>=1024?(mi/1024).toFixed(1)+" Gi":Math.round(mi)+" Mi";
 const cls=p=>p>85?"bad":p>65?"warn":"";
-const bar=(v,max,label)=>`<div class="lbl"><span>${label}</span><span class="mono">${pct(v,max)}%</span></div><div class="bar ${cls(pct(v,max))}"><i style="width:${pct(v,max)}%"></i></div>`;
+const bar=(v,max,label)=>{const value=pct(v,max);return `<div class="lbl"><span>${label}</span><span class="mono">${value==null?"Sin datos":value+"%"}</span></div>${value==null?"":`<div class="bar ${cls(value)}"><i style="width:${value}%"></i></div>`}`;};
 const stClass=s=>s==="Running"?"":["Pending","ContainerCreating","Terminating","PodInitializing"].includes(s)?"warn":"bad";
-const hist={a:[],aCpu:[],b:[],rps:[],seg:[]}, MAX=150; const push=(k,v)=>{hist[k].push(v);if(hist[k].length>MAX)hist[k].shift();};
-let tab="arch";
-$("#tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;tab=b.dataset.t;$$("#tabs button").forEach(x=>x.classList.toggle("on",x===b));$$("[data-p]").forEach(p=>p.hidden=p.dataset.p!==tab);});
+const hist={a:[],aCpu:[],b:[],rps:[],seg:[],catNow:[],catWant:[],upNow:[],upWant:[],streamNow:[],streamWant:[]}, MAX=150; const push=(k,v)=>{hist[k].push(v);if(hist[k].length>MAX)hist[k].shift();};
+const nfmt=(v,d=1)=>v===null||v===undefined||!Number.isFinite(Number(v))?"N/A":Number(v).toFixed(d);
+let tab="summary";
+function showPanel(name){tab=name;$("#tabs button[data-t='traffic']").textContent="Rendimiento";$("#tabs button[data-t='nodes']").classList.remove("on");$$("#tabs button").forEach(x=>x.classList.toggle("on",x.dataset.t===name));$$("[data-p]").forEach(p=>p.hidden=p.dataset.p!==name);}
+$("#tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;showPanel(b.dataset.t);});
+$("main").addEventListener("click",e=>{const b=e.target.closest("[data-open-panel]");if(b)showPanel(b.dataset.openPanel);});
+$("main").addEventListener("keydown",e=>{const b=e.target.closest('[data-open-panel][role="button"]');if(b&&(e.key==="Enter"||e.key===" ")){e.preventDefault();showPanel(b.dataset.openPanel);}});
+$("#present-toggle").addEventListener("click",()=>{document.body.classList.toggle("presentation");$("#present-toggle").textContent=document.body.classList.contains("presentation")?"Salir del modo presentación":"Modo presentación";showPanel("summary");});
+showPanel("summary");
 
 let testCatalog=[],selectedTest=null,lastTestState=null;
 const activeState=s=>["starting","running","stopping"].includes(s);
-const testStatusLabel=s=>({starting:"preparando",running:"ejecutando",stopping:"deteniendo",completed:"completada",failed:"fallida",cancelled:"cancelada"}[s]||s||"-");
-const outcomeLabel=s=>({passed:"correcta",slo_failed:"SLO incumplido",error:"con errores",cancelled:"cancelada"}[s]||"-");
+const testStatusLabel=s=>({starting:"preparando",running:"en ejecución",stopping:"deteniendo",completed:"prueba completada",failed:"error de ejecución",cancelled:"prueba cancelada"}[s]||s||"-");
+const outcomeLabel=s=>({passed:"SLO cumplido",slo_failed:"SLO incumplido",error:"error de ejecución",cancelled:"prueba cancelada"}[s]||"-");
 const fmtTime=s=>{s=Math.max(0,Math.round(s||0));return `${Math.floor(s/60)}m ${String(s%60).padStart(2,"0")}s`;};
 
 async function postJSON(url,body){
@@ -210,7 +249,8 @@ function selectTest(id){
   selectedTest=testCatalog.find(test=>test.id===id);if(!selectedTest)return;
   renderTestCatalog();
   $("#test-title").textContent=selectedTest.title;
-  $("#test-desc").textContent=selectedTest.description;
+  const proof={load:"capacidad con carga sostenida",stress:"límite de capacidad y punto de quiebre",spike:"reacción del HPA ante un pico",users:"comportamiento con concurrencia fija",ramp:"degradación a medida que aumenta la concurrencia",worker:"escalado de workers al crecer la cola",pod_failure:"recuperación automática de réplicas",node_failure:"reprogramación de pods ante la pérdida de un nodo",db_failure:"recuperación de PostgreSQL y persistencia",rolling:"continuidad durante una actualización",oom:"detección y recuperación frente a falta de memoria",oom_restore:"restauración del límite de memoria"};
+  $("#test-desc").textContent=`${selectedTest.description} Demuestra: ${proof[selectedTest.id]||"comportamiento del cluster"}. Riesgo: ${selectedTest.destructive?"alto; confirma antes de ejecutar":"bajo; genera carga de prueba"}.`;
   $("#test-warning").hidden=!selectedTest.destructive;
   $("#test-warning").textContent=selectedTest.confirm||"Esta prueba modifica temporalmente el estado del cluster.";
   $("#test-form").innerHTML=selectedTest.params.map(field=>{
@@ -249,6 +289,11 @@ function renderTestState(state){
     $("#run-status").className=`st ${current.status==="failed"?"bad":active?"warn":""}`;
     $("#run-phase").textContent=current.phase||"-";$("#run-time").textContent=fmtTime(current.elapsed_seconds);
     $("#run-outcome").textContent=outcomeLabel(current.outcome);$("#run-ended").textContent=current.ended_at?current.ended_at.split("T")[1]:"en curso";
+    const k=current.k6_summary, summary=$("#run-k6-summary");
+    summary.hidden=!k&&!active;
+    if(k){const slo=k.thresholds_passed===false?"SLO incumplido":k.thresholds_passed===true?"SLO cumplido":"SLO N/A";
+      summary.innerHTML=[[k.name,"prueba"],[k.vus??"N/A","VUs máx."],[slo,"estado SLO"],[Number(k.requests||0).toLocaleString(),"requests"],[nfmt(k.requests_per_second),"requests/s"],[(Number(k.error_rate||0)*100).toFixed(2)+"%","error rate"],[k.p50_ms==null?"N/A":nfmt(k.p50_ms)+" ms","p50"],[k.p95_ms==null?"N/A":nfmt(k.p95_ms)+" ms","p95"],[k.p99_ms==null?"N/A":nfmt(k.p99_ms)+" ms","p99"]].map(([v,l])=>`<div class="kpi"><b>${esc(v)}</b><small>${esc(l)}</small></div>`).join("");}
+    if(active&&!k)summary.innerHTML=liveTestMetrics(current);
     $("#test-stop").hidden=!active;$("#test-stop").disabled=current.status==="stopping";
     $("#run-artifacts").innerHTML=(current.artifacts||[]).map(name=>`<span class="artifact">${esc(name)}</span>`).join("");
   }
@@ -256,6 +301,7 @@ function renderTestState(state){
   log.textContent=(state.logs||[]).map(line=>`[${line.time}] ${line.source}: ${line.text}`).join("\n")||"esperando una prueba...";
   if(nearBottom)log.scrollTop=log.scrollHeight;
   $("#test-history").innerHTML=`<tr><th>Prueba</th><th>Estado</th><th>Resultado</th><th>Inicio</th><th>Fin</th></tr>`+(state.history||[]).map(run=>`<tr><td>${esc(run.title)}</td><td><span class="st ${run.status==="failed"?"bad":""}">${esc(testStatusLabel(run.status))}</span></td><td>${esc(outcomeLabel(run.outcome))}</td><td class="mono">${esc(run.started_at||"")}</td><td class="mono">${esc(run.ended_at||"")}</td></tr>`).join("");
+  renderK6Results(recentK6);
 }
 
 async function tickTests(){
@@ -263,7 +309,101 @@ async function tickTests(){
   catch(error){$("#test-message").textContent=`Estado de pruebas no disponible: ${error.message}`;}
 }
 
+let recentK6=[],latestClusterData=null;
+function liveTestMetrics(run){
+  const d=latestClusterData,traffic=d?.traffic||{},performance=run.group==="Rendimiento";
+  const rps=traffic.rps==null?null:Number(traffic.rps),waiting=performance&&(rps==null||rps<=0);
+  const hpas=d?.hpas||[],replica=name=>{const h=hpas.find(x=>x.target===name);return h?`${h.current} / ${h.max}`:"Sin datos";};
+  const params=run.params||{},vus=params.vus??({load:300,stress:1500,spike:1000,ramp:1200}[run.test_id]);
+  return `<div class="kpis live-test-metrics"><div class="kpi"><b>${vus==null?"N/D":esc(vus)}</b><small title="Usuarios virtuales ejecutados por k6">VUs</small></div><div class="kpi"><b>${waiting?"Esperando tráfico":rps==null?"Sin datos":nfmt(rps)+" req/s"}</b><small>tráfico del cluster</small></div><div class="kpi"><b>${esc(replica("catalog-api"))}</b><small>Catalog API actual / máximo</small></div><div class="kpi"><b>${esc(replica("stream-api"))}</b><small>Stream API actual / máximo</small></div></div><p class="hint">${waiting?"Esperando que llegue tráfico a las APIs; la primera lectura puede tardar un intervalo de sondeo.":"RPS y réplicas se actualizan desde el cluster. Error rate y percentiles de k6 se muestran al finalizar."}</p>`;
+}
+function renderK6Results(results){
+  recentK6=results||[];const box=$("#summary-test-result"),compareOpen=box.querySelector("details")?.open,latest=recentK6[0],previous=recentK6.find(x=>x.name===latest?.name&&x.file!==latest.file);
+  if(lastTestState?.current&&activeState(lastTestState.current.status)){
+    const run=lastTestState.current,k=run.k6_summary,params=run.params||{},load=params.vus?`${params.vus} VUs`:params.uploads?`${params.uploads} cargas`:"Parámetros del escenario";
+    box.innerHTML=`<div class="diagnostic-card warn"><b>Prueba en ${esc(testStatusLabel(run.status))}: ${esc(run.title)}</b><span>${esc(load)} · ${esc(run.phase||"Preparando")}${run.elapsed_seconds!=null?" · "+fmtTime(run.elapsed_seconds):""}</span>${k?`<div class="service-metrics"><div><b>${nfmt(k.requests_per_second)}</b><small>requests/s</small></div><div><b>${k.p95_ms==null?"Sin datos":nfmt(k.p95_ms)+" ms"}</b><small>p95</small></div><div><b>${k.error_rate==null?"Sin datos":(k.error_rate*100).toFixed(2)+"%"}</b><small>errores</small></div></div>`:"<p class='hint'>El dashboard no recibe métricas k6 parciales; al finalizar verás aquí el resultado. Las tarjetas de servicios muestran la carga del cluster en vivo.</p>"}</div>`;return;
+  }
+  if(!latest){box.innerHTML='<p class="hint">Aún no hay resultados k6 guardados. Ejecuta una prueba de carga para ver rendimiento.</p>';return;}
+  const status=latest.thresholds_passed===true?"Prueba completada · objetivos cumplidos":latest.thresholds_passed===false?"Prueba completada · SLO incumplido":"Prueba completada · sin umbral evaluable";
+  let compare="";
+  if(previous){const delta=(a,b)=>a==null||b==null||Number(b)===0?"N/A":`${Number(a)-Number(b)>0?"+":""}${(((Number(a)-Number(b))/Math.abs(Number(b)))*100).toFixed(1)}%`;
+    compare=`<details class="technical-details" ${compareOpen?"open":""}><summary>Comparar con ejecución anterior (${esc(previous.date||"")})</summary><div class="compare-table"><table><tr><th>Métrica</th><th>Anterior</th><th>Ahora</th><th>Cambio</th></tr>${[["p95 (ms)",previous.p95_ms,latest.p95_ms],["Errores (%)",previous.error_rate==null?null:previous.error_rate*100,latest.error_rate==null?null:latest.error_rate*100],["Requests/s",previous.requests_per_second,latest.requests_per_second]].map(([label,a,b])=>`<tr><td>${label}</td><td>${a==null?"Sin datos":nfmt(a)}</td><td>${b==null?"Sin datos":nfmt(b)}</td><td>${delta(b,a)}</td></tr>`).join("")}</table></div></details>`;
+  }
+  box.innerHTML=`<div class="diagnostic-card ${latest.thresholds_passed===false?"warn":""}"><b>${esc(status)}</b><span>${esc(latest.name)} · ${latest.vus??"VUs N/D"} VUs · ${latest.duration_seconds==null?"duración N/D":fmtTime(latest.duration_seconds)}</span><div class="service-metrics"><div><b>${Number(latest.requests||0).toLocaleString()}</b><small>solicitudes</small></div><div><b>${nfmt(latest.requests_per_second)}</b><small>requests/s</small></div><div><b>${latest.error_rate==null?"Sin datos":(latest.error_rate*100).toFixed(2)+"%"}</b><small>errores</small></div><div><b>${latest.p95_ms==null?"Sin datos":nfmt(latest.p95_ms)+" ms"}</b><small>p95</small></div></div>${latest.date?`<small>${esc(latest.date)}</small>`:""}</div>${compare}`;
+}
+async function tickK6Results(){try{const r=await fetch("/api/k6/results");if(r.ok){const body=await r.json();renderK6Results(body.results||[]);}}catch(_){/* La vista principal conserva la información conocida. */}}
+
+const formatPct=v=>v==null||!Number.isFinite(Number(v))?"Sin datos":`${Math.round(v)}%`;
+function dependenciesFromPods(d){
+  const result={...(d.dependencies||{})};
+  for(const [key,app,label] of [["postgres","postgres","PostgreSQL"],["redis","redis","Redis"],["minio","minio","SeaweedFS / MinIO"]]){
+    const pod=(d.pods||[]).find(item=>item.app===app);
+    if(pod)result[key]={...(result[key]||{}),label,pod:result[key]?.pod||pod.name,state:result[key]?.state||pod.state,ready:result[key]?.ready??pod.ready,cpu_m:result[key]?.cpu_m??pod.cpu_m,mem_mi:result[key]?.mem_mi??pod.mem_mi,cpu_limit_m:result[key]?.cpu_limit_m??pod.lim_cpu_m,mem_limit_mi:result[key]?.mem_limit_mi??pod.lim_mem_mi};
+  }
+  return result;
+}
+function renderSummary(d){
+  const pods=d.pods||[],nodes=d.nodes||[],ready=pods.filter(p=>p.ready).length,notReady=pods.length-ready;
+  const cpuKnown=nodes.length>0&&nodes.every(n=>n.cpu_m!=null),memKnown=nodes.length>0&&nodes.every(n=>n.mem_mi!=null);
+  const cpuUse=cpuKnown?nodes.reduce((s,n)=>s+n.cpu_m,0):null,cpuLimit=cpuKnown?nodes.reduce((s,n)=>s+(n.cpu_alloc_m||0),0):0;
+  const memUse=memKnown?nodes.reduce((s,n)=>s+n.mem_mi,0):null,memLimit=memKnown?nodes.reduce((s,n)=>s+(n.mem_alloc_mi||0),0):0;
+  const cpuPct=cpuLimit?cpuUse/cpuLimit*100:null,memPct=memLimit?memUse/memLimit*100:null;
+  const known=Array.isArray(d.pods)&&Array.isArray(d.nodes),level=!known||!pods.length?"unknown":notReady?"bad":(!d.metrics_ok||cpuPct==null||memPct==null)?"warn":"ok";
+  const icon=$("#overall-icon");icon.className=`status-mark ${level==="ok"?"":level}`;icon.textContent=level==="ok"?"✓":level==="warn"?"!":level==="bad"?"×":"?";
+  $("#overall-title").textContent=level==="ok"?"Sistema saludable":level==="warn"?"Estado parcial · revisar métricas":level==="bad"?"Problema · pods no listos":"Estado desconocido";
+  $("#overall-detail").textContent=`${ready} / ${pods.length} pods listos · ${nodes.filter(n=>n.ready).length} / ${nodes.length} nodos disponibles · ${notReady} pods con problemas`;
+  const simpleKpis=[[`${ready} / ${pods.length}`,"pods listos"],[`${nodes.filter(n=>n.ready).length} / ${nodes.length}`,"nodos disponibles"],[`${notReady}`,"pods con problemas"],[formatPct(cpuPct),"CPU del cluster"],[formatPct(memPct),"memoria del cluster"]];
+  $("#kpis").innerHTML=simpleKpis.map(([v,l])=>`<div class="kpi"><b>${esc(v)}</b><small>${esc(l)}</small></div>`).join("");
+  $("#cluster-context").textContent=`Namespace: ${d.ns||"N/A"} · contexto: ${d.context||"N/A"}`;
+  const openInventory=new Set([...$("#cluster-inventory").querySelectorAll(".inventory-card")].filter(item=>item.querySelector("details")?.open).map(item=>item.dataset.inventory));
+  const card=(title,count,description,values,panel)=>`<article class="inventory-card" data-inventory="${esc(title)}"><h3>${esc(title)}</h3><strong>${esc(count)}</strong><div class="hint">${esc(description)}</div><details ${openInventory.has(title)?"open":""}><summary>Ver elementos</summary><ul class="inventory-list">${values.length?values.map(value=>`<li>${value}</li>`).join(""):'<li>Sin elementos reportados</li>'}</ul><button type="button" class="header-action" data-open-panel="${panel}">Abrir detalle</button></details></article>`;
+  const autoscalers=[...(d.hpas||[]).map(h=>`HPA ${esc(h.target)}: ${h.current}/${h.max} pods · ${esc(h.metric||"métrica sin datos")}`),...(d.scaled||[]).map(x=>`KEDA ${esc(x.target)}: ${x.active?"activo":"inactivo"} · ${esc((x.triggers||[]).join(", "))}`)];
+  const warnings=(d.events||[]).filter(event=>event.type==="Warning");
+  $("#cluster-inventory").innerHTML=[
+    card("Nodos",`${nodes.filter(n=>n.ready).length}/${nodes.length} disponibles`,`${nodes.length} nodos detectados`,nodes.map(n=>`${esc(n.name)} · ${esc(n.role)} · ${n.ready?"Ready":"NotReady"} · CPU ${fCpu(n.cpu_m)} / ${fCpu(n.cpu_alloc_m)} · RAM ${fMem(n.mem_mi)} / ${fMem(n.mem_alloc_mi)}`),"nodes"),
+    card("Pods",`${ready}/${pods.length} listos`,`${notReady} no listos · ${pods.reduce((sum,p)=>sum+(p.restarts||0),0)} reinicios`,pods.map(p=>`${esc(p.app)} · ${esc(p.name)} · ${esc(p.state)} · nodo ${esc(p.node||"N/A")} · ${p.restarts||0} reinicios`),"pods"),
+    card("Workloads",String((d.workloads||[]).length),"Deployments y StatefulSets",(d.workloads||[]).map(w=>`${esc(w.kind)} ${esc(w.name)} · ${w.ready}/${w.desired} listos · ${w.pods.length} pods`),"scale"),
+    card("Services e Ingress",`${(d.services||[]).length} Services · ${(d.ingresses||[]).length} Ingress`,"rutas y destinos descubiertos",[...(d.services||[]).map(s=>`Service ${esc(s.name)} → ${esc((s.targets||[]).join(", ")||"sin destino")}`),...(d.ingresses||[]).flatMap(i=>(i.rules||[]).map(rule=>`Ingress ${esc(rule.host)}${esc(rule.path)} → ${esc(rule.service)}`))],"net"),
+    card("Autoescalado",`${(d.hpas||[]).length} HPA · ${(d.scaled||[]).length} KEDA`,"réplicas y triggers configurados",autoscalers,"scale"),
+    card("Almacenamiento",`${(d.pvcs||[]).length} PVC`,`${(d.pvcs||[]).filter(p=>p.phase==="Bound").length} enlazados`,(d.pvcs||[]).map(p=>`${esc(p.name)} · ${esc(p.phase)} · ${esc(p.size)}`),"net"),
+    card("Eventos",`${warnings.length} warnings`,`${(d.events||[]).length} eventos recientes`,(d.events||[]).map(event=>`${esc(event.type)} · ${esc(event.reason)} · ${esc(event.object)} · ${esc(event.message)}`),"events"),
+    card("Configuración",`${(d.configs||[]).length} ConfigMaps/Secrets`,"objetos visibles en el namespace",(d.configs||[]).map(item=>`${esc(item.kind)} ${esc(item.name)} · ${item.keys} claves`),"net")
+  ].join("");
+  const workloads=d.workloads||[],sm=d.service_metrics||{},deps=dependenciesFromPods(d),hpas=Object.fromEntries((d.hpas||[]).map(h=>[h.target,h])),rates={};
+  const performanceRunning=lastTestState?.current?.group==="Rendimiento"&&activeState(lastTestState.current.status);
+  (d.traffic?.pods||[]).forEach(row=>{const app=row.app||pods.find(p=>p.name===row.pod)?.app;if(app)rates[app]=(rates[app]||0)+Number(row.rps||0);});
+  const appNames=["frontend","catalog-api","upload-api","stream-api","worker"];
+  const podUtil=(list,key,limit)=>{const vals=list.filter(p=>p[key]!=null&&p[limit]>0);return vals.length===list.length&&vals.length?vals.reduce((s,p)=>s+p[key],0)/vals.reduce((s,p)=>s+p[limit],0)*100:null;};
+  const items=appNames.map(app=>{
+    const wl=workloads.find(w=>w.name===app),list=pods.filter(p=>p.app===app),metric=sm[app]||{},h=hpas[app];
+    const count=wl?`${wl.ready} / ${wl.desired}`:list.length?`${list.filter(p=>p.ready).length} / ${list.length}`:"Sin datos";
+    const cp=podUtil(list,"cpu_m","lim_cpu_m"),mp=podUtil(list,"mem_mi","lim_mem_mi");
+    const liveRate=metric.rps==null?rates[app]:metric.rps;
+    return {id:app,label:({"frontend":"Frontend","catalog-api":"Catalog API","upload-api":"Upload API","stream-api":"Stream API","worker":"Worker"})[app],status:!wl&&!list.length?"unknown":list.some(p=>!p.ready)?"bad":cp==null||mp==null||cp>85||mp>85?"warn":"ok",count,cpu:formatPct(cp),mem:formatPct(mp),rps:liveRate==null||performanceRunning&&liveRate<=0?"Esperando tráfico":`${nfmt(liveRate)} req/s`,p95:metric.p95_ms==null?"Sin datos":`${nfmt(metric.p95_ms)} ms`,error:metric.error_rate==null?"Sin datos":`${(metric.error_rate*100).toFixed(2)}%`,pods:list,hpa:h,pool:metric.pool,cpuPct:cp,memPct:mp,restarts:list.reduce((s,p)=>s+(p.restarts||0),0)};
+  });
+  [["postgres","PostgreSQL"],["redis","Redis"],["minio","SeaweedFS / MinIO"]].forEach(([key,label])=>{const x=deps[key]||{},pod=pods.find(p=>p.name===x.pod),cpu=pod?podUtil([pod],"cpu_m","lim_cpu_m"):null,mem=pod?podUtil([pod],"mem_mi","lim_mem_mi"):null;items.push({id:key,label,status:!x.pod?"unknown":!x.ready?"bad":cpu==null||mem==null||cpu>85||mem>85?"warn":"ok",count:x.ready?"Listo":"No listo",cpu:formatPct(cpu),mem:formatPct(mem),rps:"Sin datos",p95:"Sin datos",error:"Sin datos",pods:pod?[pod]:[],cpuPct:cpu,memPct:mem,restarts:pod?.restarts||0,dependency:x});});
+  const statusLabel={ok:"✓ Normal",warn:"! Advertencia",bad:"× Problema",unknown:"— Sin datos"};
+  const openServiceDetails=new Set([...$("#service-cards").querySelectorAll(".service-card[data-component]")].filter(card=>card.querySelector("details")?.open).map(card=>card.dataset.component));
+  $("#service-cards").innerHTML=items.map(x=>`<article class="service-card ${x.status=== "ok"?"":x.status}" data-component="${esc(x.id)}"><div class="service-top"><h3>${esc(x.label)}</h3><span class="st ${x.status==="bad"?"bad":x.status==="warn"?"warn":""}">${statusLabel[x.status]}</span></div><div class="service-metrics"><div><b>${esc(x.count)}</b><small>pods / estado</small></div><div><b>${esc(x.cpu)}</b><small>CPU vs límite</small></div><div><b>${esc(x.rps)}</b><small>carga actual</small></div><div><b>${esc(x.p95)}</b><small title="p95: el 95% de solicitudes respondió en este tiempo o menos.">p95 latencia ⓘ</small></div></div><details ${openServiceDetails.has(x.id)?"open":""}><summary>Ver detalles</summary><p>Memoria vs límite: ${esc(x.mem)} · Error rate: ${esc(x.error)} · Reinicios: ${x.restarts}</p>${x.hpa?`<p>HPA: ${x.hpa.current} actual / ${x.hpa.desired} deseadas / ${x.hpa.max} máximo. CPU: ${esc(x.hpa.metric||"Sin datos")} · Objetivo: ${esc(x.hpa.target_desc||"Sin datos")}.</p>`:""}${x.pool?`<p>Pool DB: ${x.pool.checked_out??"Sin datos"} conexiones prestadas · capacidad ${x.pool.capacity??"Sin datos"}.</p>`:""}${x.dependency?`<p>Pod: ${esc(x.dependency.pod||"Sin datos")} · Conexiones: ${x.dependency.connections_active??"Sin datos"} activas / ${x.dependency.connections_total??"Sin datos"} totales · Cola Redis: ${x.dependency.queue_length??"Sin datos"} trabajos.</p>`:""}<p>${x.pods.length?x.pods.map(p=>`${esc(p.name)} · ${esc(p.state)} · ${p.restarts||0} reinicios`).join("<br>"):"Sin pods reportados."}</p><button type="button" class="header-action" data-open-panel="pods">Ver tabla de pods</button></details></article>`).join("");
+
+  const diagnostics=[];const pushDiag=(title,body,kind="warn")=>diagnostics.push(`<div class="diagnostic-card ${kind}"><b>${title}</b><span>${body}</span></div>`);
+  items.forEach(x=>{if(x.cpuPct>85)pushDiag("Uso elevado de CPU",`${esc(x.label)} está en ${formatPct(x.cpuPct)} de los límites observados.`);if(x.memPct>85)pushDiag("Uso elevado de memoria",`${esc(x.label)} está en ${formatPct(x.memPct)} de los límites observados.`);});
+  (d.hpas||[]).filter(h=>h.max>0&&h.current>=h.max).forEach(h=>pushDiag("Máximo de réplicas alcanzado",`${esc(h.target)}: ${h.current} / ${h.max} pods. El HPA no puede ampliar más con el límite configurado.`));
+  Object.entries(sm).forEach(([name,x])=>{if(x.p95_ms!=null&&x.p95_ms>500)pushDiag("Latencia p95 sobre objetivo",`${esc(name)}: ${nfmt(x.p95_ms)} ms; referencia visual 500 ms.`);});
+  const pool=sm["catalog-api"]?.pool,poolPct=pool?.capacity?((pool.checked_out||0)/pool.capacity*100):null;
+  if(poolPct>85)pushDiag("Pool de base de datos bajo presión",`Catalog API utiliza ${Math.round(poolPct)}% de la capacidad medida.`);
+  const pg=items.find(x=>x.id==="postgres"),catH=hpas["catalog-api"];
+  if(pg?.cpuPct>85&&catH&&catH.current>=catH.max)pushDiag("Posible cuello de botella: PostgreSQL",`PostgreSQL presenta ${formatPct(pg.cpuPct)} de CPU mientras Catalog API llegó a ${catH.current}/${catH.max} réplicas. Es una señal correlacionada, no prueba causal.`,"bad");
+  $("#diagnostics").innerHTML=diagnostics.join("")||(!d.metrics_ok?'<div class="diagnostic-card">Sin métricas suficientes para detectar posibles cuellos de botella.</div>':'<div class="diagnostic-card">No se detectan alertas en las métricas disponibles.</div>');
+  const scaling=[];
+  (d.hpas||[]).forEach(h=>scaling.push(`<div class="service-card"><b>${esc(h.target)} <span title="HPA ajusta el número de pods según métricas como CPU.">ⓘ</span></b><p><strong>${h.current} / ${h.max} pods</strong> · ${esc(h.metric||"métrica sin datos")}</p><div class="bar ${cls(h.max?h.current/h.max*100:0)}"><i style="width:${h.max?Math.min(100,h.current/h.max*100):0}%"></i></div><small>Objetivo: ${esc(h.target_desc||"Sin datos")} · deseadas: ${h.desired}</small></div>`));
+  const worker=items.find(x=>x.id==="worker"),redis=deps.redis,keda=(d.scaled||[]).find(x=>x.target==="worker");
+  if(keda)scaling.push(`<div class="service-card"><b>Cola Redis → KEDA → Workers <span title="KEDA escala workers al observar la longitud de una cola u otra métrica externa.">ⓘ</span></b><p>Trabajos pendientes: ${redis?.queue_length??"Sin datos"} · Workers listos: ${worker?.count||"Sin datos"}</p><p>Regla configurada: 1 réplica por cada 2 trabajos · KEDA ${keda.active?"activo":"inactivo"} · máximo ${keda.max}.</p></div>`);
+  $("#summary-scaling").innerHTML=scaling.join("")||'<div class="hint">No se encontraron reglas de escalado.</div>';
+}
+
 function render(d){
+  latestClusterData=d;
   const ready=d.pods.filter(p=>p.ready).length;
   const kp=[[d.nodes.filter(n=>n.ready).length+"/"+d.nodes.length,"nodos listos"],[ready+"/"+d.pods.length,"pods listos"],[d.workloads.length,"workloads"],[d.services.length,"services"],[d.pvcs.length,"PVCs"],[d.pods.reduce((a,p)=>a+p.restarts,0),"reinicios"],[d.events.filter(e=>e.type==="Warning").length,"warnings recientes"]];
   $("#kpis").innerHTML=kp.map(([v,l])=>`<div class="kpi"><b>${v}</b><small>${l}</small></div>`).join("");
@@ -315,7 +455,23 @@ function render(d){
   $("#tbars").innerHTML=t.pods.map(p=>`<div class="lbl"><span class="mono">${esc(p.pod)} <span class="hint">${esc(p.node)}</span></span><span class="mono">${p.rps} req/s</span></div><div class="bar"><i style="width:${pct(p.rps,mx)}%"></i></div>`).join("")||'<p class="hint">sin pods de API listos o sin métricas todavía</p>';
   $("#tpods").innerHTML=`<tr><th>Pod</th><th>Nodo</th><th>req/s</th><th>segmentos/s</th><th>Mbit/s</th><th>Total acumulado</th></tr>`+t.pods.map(p=>`<tr><td class="mono">${esc(p.pod)}</td><td>${esc(p.node)}</td><td><b>${p.rps}</b></td><td>${p.seg_ps}</td><td>${p.mbps}</td><td class="mono">${p.total.toLocaleString()}</td></tr>`).join("");
 
+  const sm=d.service_metrics||{};
+  const cp=sm["catalog-api"]?.pool, poolUse=cp?.capacity?Math.round((cp.checked_out||0)/cp.capacity*100):null;
+  $("#service-metrics").innerHTML=`<tr><th>Servicio</th><th>Réplicas</th><th>CPU</th><th>Memoria</th><th>req/s</th><th>Error</th><th>p95</th><th>Pool BD (out/in/overflow)</th><th>Pool uso</th></tr>`+
+    ["catalog-api","upload-api","stream-api"].map(name=>{const x=sm[name]||{},p=x.pool;return `<tr><td class="mono">${name}</td><td>${x.current??"N/A"} / ${x.desired??"N/A"}</td><td>${x.cpu_m==null?"N/A":fCpu(x.cpu_m)}</td><td>${x.mem_mi==null?"N/A":fMem(x.mem_mi)}</td><td>${nfmt(x.rps)}</td><td>${x.error_rate==null?"N/A":(x.error_rate*100).toFixed(2)+"%"}</td><td>${x.p95_ms==null?"N/A":nfmt(x.p95_ms)+" ms"}</td><td>${p?`${p.checked_out??"N/A"} / ${p.checked_in??"N/A"} / ${p.overflow??"N/A"}`:"N/A"}</td><td>${name==="catalog-api"&&poolUse!=null?poolUse+"%":"N/A"}</td></tr>`;}).join("");
+
+  const deps=dependenciesFromPods(d);
+  $("#dependencies").innerHTML=`<tr><th>Componente</th><th>Pod</th><th>Estado</th><th>CPU</th><th>Memoria</th><th>Conexiones activas / total</th><th>Cola transcode</th></tr>`+
+    ["postgres","redis","minio"].map(name=>{const x=deps[name]||{};return `<tr><td>${esc(x.label||name)}</td><td class="mono">${esc(x.pod||"N/A")}</td><td><span class="st ${x.ready?"":"warn"}">${esc(x.state||"N/A")}</span></td><td>${x.cpu_m==null?"N/A":fCpu(x.cpu_m)}</td><td>${x.mem_mi==null?"N/A":fMem(x.mem_mi)}</td><td>${x.connections_active==null?"N/A":x.connections_active+" / "+x.connections_total}</td><td>${x.queue_length??"N/A"}</td></tr>`;}).join("");
+
+  const hpas=Object.fromEntries((d.hpas||[]).map(h=>[h.target,h]));
+  const cat=hpas["catalog-api"]||{}, up=hpas["upload-api"]||{}, stream=hpas["stream-api"]||{};
+  push("catNow",cat.current||0);push("catWant",cat.desired||0);push("upNow",up.current||0);push("upWant",up.desired||0);push("streamNow",stream.current||0);push("streamWant",stream.desired||0);
+  chart($("#c-api-hpas"),[["#1d5fd6",hist.catNow,cat.max||10],["#3b82f6",hist.catWant,cat.max||10],["#d97706",hist.upNow,up.max||10],["#f59e0b",hist.upWant,up.max||10],["#8b5cf6",hist.streamNow,stream.max||10],["#a78bfa",hist.streamWant,stream.max||10]]);
+
+  renderSummary(d);
   drawArch(d);
+  drawArch(d,"overview-arch");
 }
 
 function chart(cv,series){
@@ -327,13 +483,13 @@ function chart(cv,series){
 }
 
 /* ---------- diagrama de arquitectura ---------- */
-function drawArch(d){
-  const svg=$("#arch"); const colX=[20,250,480,730,1010]; const W=1240, BW=[190,190,210,240,190], BH=52, GAP=12;
+function drawArch(d,target="arch"){
+  const svg=$("#"+target); const colX=[20,250,480,730,1010]; const W=1240, BW=[190,190,210,240,190], BH=52, GAP=12;
   const cols=[[],[],[],[],[]]; // ingress, svc, workload, pods, pvc
   d.ingresses.forEach(i=>cols[0].push({id:"ing:"+i.name,kind:"INGRESS",title:i.name,sub:i.rules.map(r=>r.path).join(" ")||"",cls:"ing"}));
   if(!cols[0].length) cols[0].push({id:"ing:none",kind:"ENTRADA",title:"(sin ingress)",sub:"",cls:"ing"});
   d.services.forEach(s=>cols[1].push({id:"svc:"+s.name,kind:"SERVICE",title:s.name,sub:s.ports.join(" "),cls:"svc"}));
-  d.workloads.forEach(w=>cols[2].push({id:"wl:"+w.name,kind:w.kind.toUpperCase(),title:w.name,sub:`${w.ready}/${w.desired} listas`,cls:"wl",w}));
+  d.workloads.forEach(w=>{const ps=d.pods.filter(p=>w.pods.includes(p.name));const hot=ps.some(p=>p.cpu_m!=null&&p.lim_cpu_m&&p.cpu_m/p.lim_cpu_m>0.85||p.mem_mi!=null&&p.lim_mem_mi&&p.mem_mi/p.lim_mem_mi>0.85);cols[2].push({id:"wl:"+w.name,kind:w.kind.toUpperCase(),title:w.name,sub:`${w.ready}/${w.desired} listas${hot?" · uso alto":""}`,cls:"wl"+(w.ready<w.desired||hot?" bad":""),w});});
   // pods agrupados por workload, colapsados si son muchos
   d.workloads.forEach(w=>{
     const ps=d.pods.filter(p=>w.pods.includes(p.name));
@@ -364,7 +520,7 @@ function drawArch(d){
   let out=heads.map((h,i)=>`<text class="col-h" x="${colX[i]}" y="24">${h}</text>`).join("");
   out+=edges.map(([a,b,hot])=>`<path class="edge ${hot?"hot":""}" d="${path(a,b)}"/>`).join("");
   out+=hpaBoxes.map(h=>`<path class="edge" d="M${h.tx},${h.ty} L${h.tx},${h.y}"/>`).join("");
-  const box=(n,p)=>`<g><rect class="n-box ${n.cls}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}"/>
+  const box=(n,p)=>`<g tabindex="0" role="button" aria-label="${esc(n.title)}; abrir detalle técnico" data-open-panel="${n.kind==="POD"?"pods":n.kind==="PVC"?"net":"scale"}"><rect class="n-box ${n.cls}" x="${p.x}" y="${p.y}" width="${p.w}" height="${p.h}"/>
     <rect x="${p.x}" y="${p.y}" width="${Math.min(p.w,n.kind.length*6.4+16)}" height="16" rx="6" fill="${n.cls.startsWith("pod")?"#9db9ec":n.cls==="wl"?"#1d5fd6":n.cls==="svc"?"#3b82f6":n.cls==="pvc"?"#7c9cc9":n.cls==="hpa"?"#8b5cf6":"#1d5fd6"}"/>
     <text class="n-kind" x="${p.x+8}" y="${p.y+11.5}">${n.kind}</text>
     <text class="n-title" x="${p.x+10}" y="${p.y+33}">${esc(trim(n.title,p.w/7))}</text>
@@ -376,13 +532,20 @@ function drawArch(d){
 const trim=(s,n)=>s.length>n?s.slice(0,n-1)+"…":s;
 
 async function tick(){
-  try{const r=await (await fetch("/api/cluster")).json();
-    if(r.error){$("#err").hidden=false;$("#err").textContent="kubectl: "+r.error;$("#dot").classList.add("bad");}else{$("#err").hidden=true;$("#dot").classList.remove("bad");}
-    if(r.data)render(r.data); if(r.script)$("#term").textContent=r.script.replace(/\x1b\[[0-9;]*m/g,"");
-  }catch(e){$("#dot").classList.add("bad");}
+  try{const response=await fetch("/api/cluster");if(!response.ok)throw new Error(`HTTP ${response.status}`);const r=await response.json();
+    const now=Date.now();let success=Number(r.last_success||r.updated||0)*1000;
+    if(!success&&r.data?.time){const parts=r.data.time.split(":").map(Number);if(parts.length===3&&parts.every(Number.isFinite)){const snapshot=new Date();snapshot.setHours(parts[0],parts[1],parts[2],0);success=snapshot.getTime();if(success>now+2000)success-=86400000;}}
+    const age=success?Math.max(0,Math.floor((now-success)/1000)):null,stale=age==null||age>12;
+    $("#dot").classList.toggle("bad",!!r.error);$("#dot").classList.toggle("warn",!r.error&&stale);$("#live-label").textContent=r.error?"Dashboard con error":stale?"Datos desactualizados":"En vivo";
+    $("#updated-label").textContent=age==null?"":"Actualizado hace "+age+" s";$("#freshness-state").textContent=stale?"⚠ Datos desactualizados":"● En vivo";$("#freshness-time").textContent=age==null?"Esperando primera lectura":"Última lectura correcta hace "+age+" s";
+    const err=$("#err");err.hidden=!r.error;$("#err-message").textContent=r.error?"No se pudieron actualizar las métricas del cluster. La última lectura correcta se conserva si está disponible.":"";$("#err-detail").textContent=r.error||"";
+  if(r.data)render(r.data);else if(!success){$("#overall-title").textContent="No hay datos del cluster";$("#overall-detail").textContent="Comprueba el contexto de kubectl y que el cluster esté iniciado.";$("#service-cards").innerHTML='<div class="service-card">Aún no hay información para mostrar.</div>';}
+    if(stale&&r.data){$("#overall-title").textContent="Datos desactualizados · último estado conocido";$("#overall-icon").className="status-mark warn";$("#overall-icon").textContent="!";}
+    if(r.script)$("#term").textContent=r.script.replace(/\x1b\[[0-9;]*m/g,"");
+  }catch(e){console.error("Error al actualizar/renderizar el dashboard",e);$("#dot").classList.add("bad");$("#live-label").textContent="Error al mostrar datos";$("#err").hidden=false;$("#err-message").textContent="El API respondió, pero el dashboard no pudo mostrar sus datos.";$("#err-detail").textContent=e.stack||e.message;const details=$("#err details");if(details)details.open=true;}
 }
 tick();setInterval(tick,2000);
-loadTestCatalog();tickTests();setInterval(tickTests,1000);
+loadTestCatalog();tickTests();setInterval(tickTests,1000);tickK6Results();setInterval(tickK6Results,5000);
 </script>
 </body>
 </html>

@@ -26,3 +26,8 @@ except AttributeError:
     _node = platform.node()
 POD_NAME = env("POD_NAME", _node)
 MAX_UPLOAD_MB = int(env("MAX_UPLOAD_MB", "200"))
+DB_POOL_SIZE = int(env("DB_POOL_SIZE", "5"))
+DB_MAX_OVERFLOW = int(env("DB_MAX_OVERFLOW", "5"))
+DB_POOL_TIMEOUT = float(env("DB_POOL_TIMEOUT", "5"))
+DB_POOL_RECYCLE = int(env("DB_POOL_RECYCLE", "1800"))
+CATALOG_CACHE_TTL = int(env("CATALOG_CACHE_TTL", "4"))

@@ -8,7 +8,14 @@ import config
 
 log = logging.getLogger("vibe.catalog.db")
 
-engine = create_engine(config.DATABASE_URL, pool_pre_ping=True, pool_size=10, max_overflow=20)
+engine = create_engine(
+    config.DATABASE_URL,
+    pool_size=config.DB_POOL_SIZE,
+    max_overflow=config.DB_MAX_OVERFLOW,
+    pool_timeout=config.DB_POOL_TIMEOUT,
+    pool_recycle=config.DB_POOL_RECYCLE,
+    pool_pre_ping=True,
+)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 
 

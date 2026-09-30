@@ -3,29 +3,23 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
-require_cmds kubectl curl python3
+require_cmds kubectl python3
 require_cluster
 
 if [[ "${1:-}" == "restore" ]]; then
-  kubectl -n "$NS" set resources deployment/worker --limits=cpu=1,memory=512Mi >/dev/null
+  RESTORE_PATCH='{"spec":{"template":{"spec":{"containers":[{"name":"worker","command":null,"args":null,"resources":{"requests":{"cpu":"100m","memory":"96Mi"},"limits":{"cpu":"1","memory":"512Mi"}}}]}}}}'
+  kubectl -n "$NS" patch deployment worker --type=strategic -p "$RESTORE_PATCH" >/dev/null
   kubectl -n "$NS" rollout status deployment/worker --timeout=180s
-  echo "Límite restaurado a 512Mi"
+  echo "Recursos restaurados: request 96Mi, límite 512Mi"
   exit 0
 fi
 [[ $# -eq 0 ]] || die "Uso: chaos/oom.sh [restore]"
 
-AUDIO="${UPLOAD_FILE:-data/audio/001 - DJ Replica - Lunar Horizon.mp3}"
-[[ -f "$AUDIO" ]] || die "Falta $AUDIO; ejecuta make gen-audio"
-kubectl -n "$NS" set resources deployment/worker --limits=cpu=1,memory=48Mi >/dev/null
-kubectl -n "$NS" rollout status deployment/worker --timeout=180s
+OOM_PATCH='{"spec":{"template":{"spec":{"containers":[{"name":"worker","command":["python3","-c","import time\nblocks = []\nwhile True:\n    blocks.append(bytearray(8 * 1024 * 1024))\n    time.sleep(0.05)"],"args":null,"resources":{"requests":{"cpu":"50m","memory":"48Mi"},"limits":{"cpu":"1","memory":"64Mi"}}}]}}}}'
+echo "[$(now)] Limitando el worker a 64Mi y aplicando carga de memoria controlada"
+kubectl -n "$NS" patch deployment worker --type=strategic -p "$OOM_PATCH" >/dev/null
 
-echo "[$(now)] Encolando audio para forzar presión de memoria"
-curl -fsS --max-time 120 \
-  -F "file=@$AUDIO;type=audio/mpeg" \
-  -F "title=OOM test $(date '+%s')" -F 'artist=chaos' -F 'album=OOM' \
-  "$BASE_URL/api/upload" >/dev/null
-
-DEADLINE=$((SECONDS + 240))
+DEADLINE=$((SECONDS + 120))
 while true; do
   REASON="$(kubectl -n "$NS" get pods -l app=worker -o json | python3 -c '
 import json,sys
@@ -33,7 +27,7 @@ d=json.load(sys.stdin)
 print(next((c.get("lastState",{}).get("terminated",{}).get("reason","") for p in d["items"] for c in p.get("status",{}).get("containerStatuses",[]) if c.get("lastState",{}).get("terminated",{}).get("reason")), ""))
 ')"
   [[ "$REASON" == "OOMKilled" ]] && break
-  (( SECONDS < DEADLINE )) || die "No se observó OOMKilled en 240s"
+  (( SECONDS < DEADLINE )) || die "No se observó OOMKilled en 120s"
   sleep 2
 done
 

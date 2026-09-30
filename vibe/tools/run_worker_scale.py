@@ -7,12 +7,15 @@ import argparse
 import csv
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
 import sys
 import time
 from urllib.request import urlopen
+
+from run_k6 import summarize as summarize_k6
 
 
 NS = "vibe"
@@ -52,7 +55,9 @@ def api_stats(api: str) -> dict:
 
 
 def main() -> int:
+    global NS
     parser = argparse.ArgumentParser()
+    parser.add_argument("--ns", default=os.getenv("NS", "vibe"))
     parser.add_argument("--api", default="http://localhost")
     parser.add_argument("--uploads", type=int, default=200)
     parser.add_argument("--poll", type=float, default=2.0)
@@ -60,6 +65,9 @@ def main() -> int:
     parser.add_argument("--audio", type=Path, default=DEFAULT_AUDIO)
     parser.add_argument("--evidence-dir", type=Path, default=Path("docs/evidencia"))
     args = parser.parse_args()
+    if len(args.ns) > 63 or not re.fullmatch(r"[a-z0-9]([-a-z0-9]*[a-z0-9])?", args.ns):
+        parser.error("ns debe ser un nombre de namespace Kubernetes válido")
+    NS = args.ns
 
     if args.uploads < 1 or args.poll <= 0 or args.timeout < 1:
         parser.error("uploads, poll y timeout deben ser positivos")
@@ -151,6 +159,16 @@ def main() -> int:
         "files": {"k6_log": str(log_path), "timeline": str(csv_path), "k6_summary": str(raw_path)},
     }
     summary_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    if raw_path.is_file():
+        try:
+            k6_summary = summarize_k6(json.loads(raw_path.read_text(encoding="utf-8")), "worker-scale", 20,
+                                      time.monotonic() - started)
+            results_dir = Path(__file__).resolve().parents[1] / "results" / "k6"
+            results_dir.mkdir(parents=True, exist_ok=True)
+            (results_dir / f"worker-scale-{stamp}.json").write_text(
+                json.dumps(k6_summary, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        except (OSError, ValueError, TypeError) as exc:
+            print(f"Aviso: no se pudo guardar el resumen k6 estructurado: {exc}", file=sys.stderr)
     print(json.dumps(summary, indent=2, ensure_ascii=False))
     return 0 if exit_code == 0 and summary["queue_drained"] else 1
 

@@ -4,6 +4,25 @@ from datetime import datetime
 from pydantic import BaseModel
 
 
+class TrackListItem(BaseModel):
+    id: str
+    title: str
+    artist: str
+    album: str
+    status: str
+    duration_sec: float | None
+    created_at: datetime
+    stream_url: str | None
+
+    @classmethod
+    def from_model(cls, t) -> "TrackListItem":
+        return cls(
+            id=t.id, title=t.title, artist=t.artist, album=t.album,
+            status=t.status, duration_sec=t.duration_sec, created_at=t.created_at,
+            stream_url=f"/stream/{t.id}/master.m3u8" if t.status == "ready" else None,
+        )
+
+
 class TrackOut(BaseModel):
     id: str
     title: str
@@ -32,6 +51,10 @@ class TrackOut(BaseModel):
             created_at=t.created_at,
             stream_url=f"/stream/{t.id}/master.m3u8" if t.status == "ready" else None,
         )
+
+
+# Nombre explícito para el endpoint de detalle; TrackOut se conserva para el API de upload.
+TrackDetail = TrackOut
 
 
 class Stats(BaseModel):

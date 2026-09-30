@@ -4,7 +4,7 @@ import redis
 
 import config
 
-r = redis.Redis.from_url(config.REDIS_URL, decode_responses=True)
+r = redis.Redis.from_url(config.REDIS_URL, decode_responses=True, socket_connect_timeout=0.5, socket_timeout=0.5)
 
 
 def queue_length() -> int:
@@ -16,3 +16,11 @@ def queue_length() -> int:
 
 def ping() -> bool:
     return bool(r.ping())
+
+
+def invalidate_catalog() -> None:
+    """Advance the shared cache generation; cache failures never block writes."""
+    try:
+        r.incr("vibe:catalog:version")
+    except Exception:
+        pass
