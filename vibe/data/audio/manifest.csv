@@ -1,0 +1,201 @@
+file,title,artist,album,seconds
+001 - DJ Replica - Lunar Horizon.mp3,Lunar Horizon,DJ Replica,Orchestrated,45.6
+002 - Persistent Volume - Electric Cascade.mp3,Electric Cascade,Persistent Volume,Zero Downtime,21.0
+003 - Helm Chart - Mirage Signal.mp3,Mirage Signal,Helm Chart,Scale Out,31.0
+004 - Cluster Club - Coral Riot.mp3,Coral Riot,Cluster Club,Scale Out,28.9
+005 - Miss Latencia - Glass Lagoon.mp3,Glass Lagoon,Miss Latencia,Namespace,49.5
+006 - Chaos Monkey - Ocean Horizon.mp3,Ocean Horizon,Chaos Monkey,Control Plane,47.1
+007 - DJ Replica - Neon Fever.mp3,Neon Fever,DJ Replica,Orchestrated,55.7
+008 - The Rolling Updates - Pulse Glow.mp3,Pulse Glow,The Rolling Updates,Zero Downtime,23.5
+009 - Kilo Byte - Chrome Fever.mp3,Chrome Fever,Kilo Byte,Control Plane,36.9
+010 - Ingress Boys - Mirage Runway.mp3,Mirage Runway,Ingress Boys,Control Plane,21.2
+011 - Pod & Node - Coral Boulevard.mp3,Coral Boulevard,Pod & Node,Orchestrated,28.7
+012 - Sidecar - Sunset Glow.mp3,Sunset Glow,Sidecar,Namespace,40.2
+013 - Los Andes Sintéticos - Static Riot.mp3,Static Riot,Los Andes Sintéticos,Zero Downtime,21.1
+014 - Cluster Club - Lunar Motel.mp3,Lunar Motel,Cluster Club,Zero Downtime,28.0
+015 - Kilo Byte - Ocean Skyline.mp3,Ocean Skyline,Kilo Byte,Scale Out,46.0
+016 - Persistent Volume - Lunar Parade.mp3,Lunar Parade,Persistent Volume,Control Plane,41.8
+017 - DJ Replica - Glass Boulevard.mp3,Glass Boulevard,DJ Replica,Control Plane,28.8
+018 - Chaos Monkey - Crimson Shadow.mp3,Crimson Shadow,Chaos Monkey,Orchestrated,43.6
+019 - Los Andes Sintéticos - Chrome Skyline.mp3,Chrome Skyline,Los Andes Sintéticos,Control Plane,52.4
+020 - Sidecar - Velvet Cascade.mp3,Velvet Cascade,Sidecar,Orchestrated,20.3
+021 - Kilo Byte - Lunar Bloom.mp3,Lunar Bloom,Kilo Byte,Orchestrated,52.2
+022 - Los Andes Sintéticos - Sunset Fever.mp3,Sunset Fever,Los Andes Sintéticos,Namespace,47.9
+023 - Sidecar - Solar Fever.mp3,Solar Fever,Sidecar,Zero Downtime,33.6
+024 - Los Andes Sintéticos - Golden Signal.mp3,Golden Signal,Los Andes Sintéticos,Control Plane,26.2
+025 - Cluster Club - Electric Shadow.mp3,Electric Shadow,Cluster Club,Control Plane,58.3
+026 - Kilo Byte - Violet Shadow.mp3,Violet Shadow,Kilo Byte,Control Plane,33.5
+027 - Persistent Volume - Midnight Riot.mp3,Midnight Riot,Persistent Volume,Zero Downtime,23.7
+028 - Pod & Node - Midnight Drive.mp3,Midnight Drive,Pod & Node,Namespace,23.9
+029 - Los Andes Sintéticos - Static Parade.mp3,Static Parade,Los Andes Sintéticos,Vol. VI,53.9
+030 - Helm Chart - Coral Glow.mp3,Coral Glow,Helm Chart,Scale Out,44.1
+031 - DJ Replica - Pulse Motel.mp3,Pulse Motel,DJ Replica,Vol. VI,52.3
+032 - The Rolling Updates - Sunset Skyline.mp3,Sunset Skyline,The Rolling Updates,Scale Out,49.2
+033 - Sidecar - Coral Dream.mp3,Coral Dream,Sidecar,Control Plane,41.4
+034 - Chaos Monkey - Chrome Shadow.mp3,Chrome Shadow,Chaos Monkey,Zero Downtime,58.9
+035 - Los Andes Sintéticos - Pulse Parade.mp3,Pulse Parade,Los Andes Sintéticos,Control Plane,35.1
+036 - The Rolling Updates - Sunset Ghost.mp3,Sunset Ghost,The Rolling Updates,Zero Downtime,42.1
+037 - Kilo Byte - Ocean Bloom.mp3,Ocean Bloom,Kilo Byte,Control Plane,53.2
+038 - Helm Chart - Pulse Dream.mp3,Pulse Dream,Helm Chart,Scale Out,44.7
+039 - Helm Chart - Coral Lagoon.mp3,Coral Lagoon,Helm Chart,Orchestrated,54.5
+040 - Sidecar - Sunset Skyline.mp3,Sunset Skyline,Sidecar,Control Plane,43.1
+041 - Chaos Monkey - Solar Fever.mp3,Solar Fever,Chaos Monkey,Scale Out,48.2
+042 - Helm Chart - Retro Dream.mp3,Retro Dream,Helm Chart,Orchestrated,21.8
+043 - Pod & Node - Sunset Horizon.mp3,Sunset Horizon,Pod & Node,Zero Downtime,29.1
+044 - Chaos Monkey - Glass Dream.mp3,Glass Dream,Chaos Monkey,Orchestrated,31.6
+045 - Helm Chart - Retro Boulevard.mp3,Retro Boulevard,Helm Chart,Vol. VI,23.2
+046 - Los Andes Sintéticos - Violet Runway.mp3,Violet Runway,Los Andes Sintéticos,Control Plane,29.3
+047 - Cluster Club - Crimson Riot.mp3,Crimson Riot,Cluster Club,Zero Downtime,24.0
+048 - Ingress Boys - Velvet Radio.mp3,Velvet Radio,Ingress Boys,Orchestrated,31.1
+049 - The Rolling Updates - Sunset Cascade.mp3,Sunset Cascade,The Rolling Updates,Namespace,45.4
+050 - Helm Chart - Neon Motel.mp3,Neon Motel,Helm Chart,Orchestrated,34.6
+051 - Sidecar - Midnight Horizon.mp3,Midnight Horizon,Sidecar,Vol. VI,34.8
+052 - Kilo Byte - Coral Skyline.mp3,Coral Skyline,Kilo Byte,Namespace,28.4
+053 - Pod & Node - Mirage Parade.mp3,Mirage Parade,Pod & Node,Vol. VI,30.7
+054 - Kilo Byte - Midnight Skyline.mp3,Midnight Skyline,Kilo Byte,Scale Out,57.5
+055 - Ingress Boys - Golden Drive.mp3,Golden Drive,Ingress Boys,Namespace,45.9
+056 - Los Andes Sintéticos - Midnight Cascade.mp3,Midnight Cascade,Los Andes Sintéticos,Scale Out,44.4
+057 - Miss Latencia - Static Radio.mp3,Static Radio,Miss Latencia,Orchestrated,26.8
+058 - The Rolling Updates - Velvet Fever.mp3,Velvet Fever,The Rolling Updates,Scale Out,49.2
+059 - Los Andes Sintéticos - Retro Ghost.mp3,Retro Ghost,Los Andes Sintéticos,Control Plane,26.5
+060 - DJ Replica - Crimson Circuit.mp3,Crimson Circuit,DJ Replica,Orchestrated,35.2
+061 - Kilo Byte - Retro Motel.mp3,Retro Motel,Kilo Byte,Vol. VI,59.6
+062 - DJ Replica - Coral Glow.mp3,Coral Glow,DJ Replica,Orchestrated,45.6
+063 - Miss Latencia - Echo Lagoon.mp3,Echo Lagoon,Miss Latencia,Control Plane,42.3
+064 - Kilo Byte - Vice Runway.mp3,Vice Runway,Kilo Byte,Vol. VI,47.4
+065 - Kilo Byte - Static Circuit.mp3,Static Circuit,Kilo Byte,Vol. VI,53.7
+066 - Sidecar - Golden Shadow.mp3,Golden Shadow,Sidecar,Orchestrated,51.0
+067 - Cluster Club - Glass Cascade.mp3,Glass Cascade,Cluster Club,Zero Downtime,29.2
+068 - Pod & Node - Glass Runway.mp3,Glass Runway,Pod & Node,Zero Downtime,21.3
+069 - Kilo Byte - Midnight Lagoon.mp3,Midnight Lagoon,Kilo Byte,Control Plane,32.6
+070 - Cluster Club - Lunar Bloom.mp3,Lunar Bloom,Cluster Club,Control Plane,30.7
+071 - Pod & Node - Electric Cascade.mp3,Electric Cascade,Pod & Node,Namespace,28.4
+072 - Los Andes Sintéticos - Midnight Horizon.mp3,Midnight Horizon,Los Andes Sintéticos,Zero Downtime,57.7
+073 - Cluster Club - Crimson Runway.mp3,Crimson Runway,Cluster Club,Vol. VI,55.1
+074 - Sidecar - Static Radio.mp3,Static Radio,Sidecar,Namespace,32.6
+075 - Chaos Monkey - Echo Motel.mp3,Echo Motel,Chaos Monkey,Namespace,46.2
+076 - Miss Latencia - Violet Shadow.mp3,Violet Shadow,Miss Latencia,Orchestrated,35.8
+077 - The Rolling Updates - Electric Cascade.mp3,Electric Cascade,The Rolling Updates,Zero Downtime,56.6
+078 - Miss Latencia - Solar Glow.mp3,Solar Glow,Miss Latencia,Namespace,38.4
+079 - DJ Replica - Crimson Radio.mp3,Crimson Radio,DJ Replica,Scale Out,30.6
+080 - Cluster Club - Pulse Ghost.mp3,Pulse Ghost,Cluster Club,Zero Downtime,29.9
+081 - Persistent Volume - Retro Circuit.mp3,Retro Circuit,Persistent Volume,Zero Downtime,42.5
+082 - Sidecar - Neon Circuit.mp3,Neon Circuit,Sidecar,Control Plane,30.5
+083 - Sidecar - Coral Skyline.mp3,Coral Skyline,Sidecar,Scale Out,43.4
+084 - The Rolling Updates - Ocean Boulevard.mp3,Ocean Boulevard,The Rolling Updates,Namespace,55.9
+085 - Persistent Volume - Lunar Riot.mp3,Lunar Riot,Persistent Volume,Zero Downtime,36.0
+086 - The Rolling Updates - Sunset Drive.mp3,Sunset Drive,The Rolling Updates,Namespace,28.8
+087 - DJ Replica - Pulse Parade.mp3,Pulse Parade,DJ Replica,Scale Out,59.9
+088 - Helm Chart - Mirage Skyline.mp3,Mirage Skyline,Helm Chart,Control Plane,40.4
+089 - Ingress Boys - Violet Parade.mp3,Violet Parade,Ingress Boys,Control Plane,23.6
+090 - Pod & Node - Golden Parade.mp3,Golden Parade,Pod & Node,Control Plane,21.9
+091 - Cluster Club - Solar Ghost.mp3,Solar Ghost,Cluster Club,Zero Downtime,24.4
+092 - Ingress Boys - Velvet Glow.mp3,Velvet Glow,Ingress Boys,Zero Downtime,45.1
+093 - Miss Latencia - Static Tide.mp3,Static Tide,Miss Latencia,Namespace,51.7
+094 - Persistent Volume - Midnight Bloom.mp3,Midnight Bloom,Persistent Volume,Orchestrated,36.9
+095 - Los Andes Sintéticos - Vice Tide.mp3,Vice Tide,Los Andes Sintéticos,Namespace,22.5
+096 - Miss Latencia - Retro Parade.mp3,Retro Parade,Miss Latencia,Vol. VI,35.3
+097 - Kilo Byte - Echo Boulevard.mp3,Echo Boulevard,Kilo Byte,Control Plane,59.8
+098 - Miss Latencia - Coral Signal.mp3,Coral Signal,Miss Latencia,Orchestrated,41.2
+099 - Chaos Monkey - Static Drive.mp3,Static Drive,Chaos Monkey,Scale Out,58.8
+100 - The Rolling Updates - Ocean Riot.mp3,Ocean Riot,The Rolling Updates,Namespace,54.4
+101 - Kilo Byte - Lunar Horizon.mp3,Lunar Horizon,Kilo Byte,Namespace,20.5
+102 - DJ Replica - Midnight Circuit.mp3,Midnight Circuit,DJ Replica,Scale Out,48.8
+103 - Sidecar - Lunar Shadow.mp3,Lunar Shadow,Sidecar,Vol. VI,47.3
+104 - Kilo Byte - Mirage Dream.mp3,Mirage Dream,Kilo Byte,Control Plane,41.5
+105 - Sidecar - Chrome Ghost.mp3,Chrome Ghost,Sidecar,Scale Out,30.7
+106 - Miss Latencia - Retro Radio.mp3,Retro Radio,Miss Latencia,Orchestrated,45.6
+107 - DJ Replica - Echo Circuit.mp3,Echo Circuit,DJ Replica,Scale Out,24.5
+108 - DJ Replica - Ocean Bloom.mp3,Ocean Bloom,DJ Replica,Scale Out,37.4
+109 - Miss Latencia - Midnight Radio.mp3,Midnight Radio,Miss Latencia,Orchestrated,38.1
+110 - Pod & Node - Lunar Fever.mp3,Lunar Fever,Pod & Node,Scale Out,58.2
+111 - Cluster Club - Solar Drive.mp3,Solar Drive,Cluster Club,Namespace,55.0
+112 - Sidecar - Coral Lagoon.mp3,Coral Lagoon,Sidecar,Namespace,30.5
+113 - DJ Replica - Retro Signal.mp3,Retro Signal,DJ Replica,Orchestrated,40.0
+114 - Pod & Node - Pulse Radio.mp3,Pulse Radio,Pod & Node,Namespace,27.1
+115 - Kilo Byte - Retro Glow.mp3,Retro Glow,Kilo Byte,Control Plane,56.5
+116 - Los Andes Sintéticos - Crimson Lagoon.mp3,Crimson Lagoon,Los Andes Sintéticos,Orchestrated,54.8
+117 - Persistent Volume - Coral Tide.mp3,Coral Tide,Persistent Volume,Scale Out,31.9
+118 - Kilo Byte - Velvet Ghost.mp3,Velvet Ghost,Kilo Byte,Zero Downtime,45.6
+119 - Pod & Node - Chrome Skyline.mp3,Chrome Skyline,Pod & Node,Zero Downtime,44.4
+120 - Kilo Byte - Violet Horizon.mp3,Violet Horizon,Kilo Byte,Vol. VI,26.1
+121 - Los Andes Sintéticos - Chrome Circuit.mp3,Chrome Circuit,Los Andes Sintéticos,Control Plane,50.5
+122 - Miss Latencia - Crimson Shadow.mp3,Crimson Shadow,Miss Latencia,Vol. VI,41.6
+123 - Helm Chart - Lunar Tide.mp3,Lunar Tide,Helm Chart,Scale Out,51.1
+124 - The Rolling Updates - Neon Radio.mp3,Neon Radio,The Rolling Updates,Orchestrated,41.2
+125 - Kilo Byte - Violet Parade.mp3,Violet Parade,Kilo Byte,Vol. VI,20.0
+126 - DJ Replica - Violet Runway.mp3,Violet Runway,DJ Replica,Control Plane,33.0
+127 - Kilo Byte - Vice Fever.mp3,Vice Fever,Kilo Byte,Control Plane,20.8
+128 - Miss Latencia - Echo Radio.mp3,Echo Radio,Miss Latencia,Namespace,57.2
+129 - Ingress Boys - Ocean Shadow.mp3,Ocean Shadow,Ingress Boys,Orchestrated,55.1
+130 - Helm Chart - Retro Shadow.mp3,Retro Shadow,Helm Chart,Zero Downtime,53.3
+131 - The Rolling Updates - Solar Signal.mp3,Solar Signal,The Rolling Updates,Zero Downtime,32.3
+132 - Los Andes Sintéticos - Retro Skyline.mp3,Retro Skyline,Los Andes Sintéticos,Namespace,22.3
+133 - Persistent Volume - Solar Radio.mp3,Solar Radio,Persistent Volume,Scale Out,55.1
+134 - Persistent Volume - Chrome Radio.mp3,Chrome Radio,Persistent Volume,Orchestrated,57.9
+135 - Persistent Volume - Retro Glow.mp3,Retro Glow,Persistent Volume,Namespace,23.4
+136 - DJ Replica - Sunset Cascade.mp3,Sunset Cascade,DJ Replica,Zero Downtime,39.4
+137 - Sidecar - Mirage Skyline.mp3,Mirage Skyline,Sidecar,Orchestrated,22.8
+138 - Miss Latencia - Glass Radio.mp3,Glass Radio,Miss Latencia,Zero Downtime,50.4
+139 - Miss Latencia - Crimson Signal.mp3,Crimson Signal,Miss Latencia,Control Plane,50.6
+140 - Kilo Byte - Pulse Tide.mp3,Pulse Tide,Kilo Byte,Vol. VI,25.1
+141 - Cluster Club - Golden Ghost.mp3,Golden Ghost,Cluster Club,Orchestrated,39.0
+142 - Persistent Volume - Neon Lagoon.mp3,Neon Lagoon,Persistent Volume,Orchestrated,42.0
+143 - The Rolling Updates - Sunset Bloom.mp3,Sunset Bloom,The Rolling Updates,Scale Out,30.6
+144 - Miss Latencia - Electric Ghost.mp3,Electric Ghost,Miss Latencia,Namespace,54.9
+145 - Sidecar - Glass Parade.mp3,Glass Parade,Sidecar,Namespace,36.9
+146 - Chaos Monkey - Glass Horizon.mp3,Glass Horizon,Chaos Monkey,Namespace,28.5
+147 - Persistent Volume - Solar Glow.mp3,Solar Glow,Persistent Volume,Control Plane,41.6
+148 - Ingress Boys - Ocean Drive.mp3,Ocean Drive,Ingress Boys,Orchestrated,49.2
+149 - Pod & Node - Chrome Lagoon.mp3,Chrome Lagoon,Pod & Node,Namespace,28.0
+150 - DJ Replica - Echo Ghost.mp3,Echo Ghost,DJ Replica,Zero Downtime,32.5
+151 - Cluster Club - Vice Lagoon.mp3,Vice Lagoon,Cluster Club,Zero Downtime,59.8
+152 - Helm Chart - Crimson Radio.mp3,Crimson Radio,Helm Chart,Vol. VI,46.0
+153 - Helm Chart - Chrome Drive.mp3,Chrome Drive,Helm Chart,Scale Out,37.5
+154 - Persistent Volume - Echo Ghost.mp3,Echo Ghost,Persistent Volume,Zero Downtime,40.7
+155 - Helm Chart - Echo Cascade.mp3,Echo Cascade,Helm Chart,Orchestrated,24.8
+156 - Persistent Volume - Static Horizon.mp3,Static Horizon,Persistent Volume,Control Plane,29.0
+157 - Ingress Boys - Solar Bloom.mp3,Solar Bloom,Ingress Boys,Vol. VI,33.5
+158 - Sidecar - Ocean Horizon.mp3,Ocean Horizon,Sidecar,Namespace,43.5
+159 - Pod & Node - Lunar Circuit.mp3,Lunar Circuit,Pod & Node,Zero Downtime,29.2
+160 - Chaos Monkey - Violet Motel.mp3,Violet Motel,Chaos Monkey,Orchestrated,28.8
+161 - Sidecar - Coral Circuit.mp3,Coral Circuit,Sidecar,Zero Downtime,22.8
+162 - Los Andes Sintéticos - Violet Ghost.mp3,Violet Ghost,Los Andes Sintéticos,Vol. VI,45.2
+163 - Sidecar - Echo Ghost.mp3,Echo Ghost,Sidecar,Namespace,29.2
+164 - Cluster Club - Midnight Signal.mp3,Midnight Signal,Cluster Club,Namespace,56.2
+165 - DJ Replica - Chrome Drive.mp3,Chrome Drive,DJ Replica,Scale Out,54.4
+166 - Kilo Byte - Electric Boulevard.mp3,Electric Boulevard,Kilo Byte,Zero Downtime,22.8
+167 - Helm Chart - Ocean Drive.mp3,Ocean Drive,Helm Chart,Vol. VI,29.5
+168 - Chaos Monkey - Pulse Tide.mp3,Pulse Tide,Chaos Monkey,Control Plane,46.8
+169 - Chaos Monkey - Retro Ghost.mp3,Retro Ghost,Chaos Monkey,Control Plane,28.6
+170 - The Rolling Updates - Solar Dream.mp3,Solar Dream,The Rolling Updates,Orchestrated,25.3
+171 - Ingress Boys - Lunar Circuit.mp3,Lunar Circuit,Ingress Boys,Control Plane,57.4
+172 - Persistent Volume - Chrome Motel.mp3,Chrome Motel,Persistent Volume,Namespace,42.8
+173 - Cluster Club - Golden Lagoon.mp3,Golden Lagoon,Cluster Club,Zero Downtime,38.9
+174 - Kilo Byte - Violet Dream.mp3,Violet Dream,Kilo Byte,Vol. VI,51.4
+175 - Los Andes Sintéticos - Static Signal.mp3,Static Signal,Los Andes Sintéticos,Scale Out,52.3
+176 - Los Andes Sintéticos - Pulse Cascade.mp3,Pulse Cascade,Los Andes Sintéticos,Control Plane,27.6
+177 - Chaos Monkey - Glass Drive.mp3,Glass Drive,Chaos Monkey,Scale Out,23.9
+178 - Cluster Club - Violet Dream.mp3,Violet Dream,Cluster Club,Control Plane,37.2
+179 - Kilo Byte - Lunar Fever.mp3,Lunar Fever,Kilo Byte,Vol. VI,36.9
+180 - The Rolling Updates - Retro Glow.mp3,Retro Glow,The Rolling Updates,Orchestrated,38.7
+181 - Sidecar - Violet Radio.mp3,Violet Radio,Sidecar,Namespace,49.2
+182 - Los Andes Sintéticos - Golden Signal.mp3,Golden Signal,Los Andes Sintéticos,Orchestrated,46.9
+183 - The Rolling Updates - Golden Shadow.mp3,Golden Shadow,The Rolling Updates,Orchestrated,59.4
+184 - Ingress Boys - Crimson Glow.mp3,Crimson Glow,Ingress Boys,Orchestrated,23.9
+185 - Chaos Monkey - Static Bloom.mp3,Static Bloom,Chaos Monkey,Namespace,36.1
+186 - Persistent Volume - Electric Tide.mp3,Electric Tide,Persistent Volume,Orchestrated,33.6
+187 - Cluster Club - Sunset Shadow.mp3,Sunset Shadow,Cluster Club,Orchestrated,54.5
+188 - Persistent Volume - Ocean Runway.mp3,Ocean Runway,Persistent Volume,Namespace,29.9
+189 - DJ Replica - Golden Parade.mp3,Golden Parade,DJ Replica,Orchestrated,27.6
+190 - Cluster Club - Sunset Ghost.mp3,Sunset Ghost,Cluster Club,Orchestrated,37.9
+191 - Sidecar - Static Drive.mp3,Static Drive,Sidecar,Control Plane,36.9
+192 - DJ Replica - Glass Shadow.mp3,Glass Shadow,DJ Replica,Control Plane,31.1
+193 - Kilo Byte - Golden Bloom.mp3,Golden Bloom,Kilo Byte,Vol. VI,30.0
+194 - DJ Replica - Solar Skyline.mp3,Solar Skyline,DJ Replica,Namespace,56.9
+195 - Cluster Club - Static Bloom.mp3,Static Bloom,Cluster Club,Vol. VI,37.7
+196 - Sidecar - Coral Parade.mp3,Coral Parade,Sidecar,Namespace,54.5
+197 - Sidecar - Neon Bloom.mp3,Neon Bloom,Sidecar,Zero Downtime,42.0
+198 - Chaos Monkey - Static Ghost.mp3,Static Ghost,Chaos Monkey,Control Plane,22.0
+199 - The Rolling Updates - Echo Radio.mp3,Echo Radio,The Rolling Updates,Scale Out,60.0
+200 - Kilo Byte - Velvet Ghost.mp3,Velvet Ghost,Kilo Byte,Scale Out,53.4

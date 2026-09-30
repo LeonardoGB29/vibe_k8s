@@ -9,18 +9,512 @@ Solo usa la librería estándar de Python + kubectl del PATH.
     python3 server.py --status-script ../vibe/tools/cluster-status.sh   # muestra también la salida del script
 """
 import argparse
+import codecs
+import copy
 import json
+import os
+import re
+import signal
 import subprocess
 import threading
 import time
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 HERE = Path(__file__).parent
+VIBE_DIR = HERE.parent / "vibe"
 STATE = {"data": None, "error": None, "updated": 0, "script": "", "traffic_prev": {}}
 ARGS = None
+
+ANSI = re.compile(r"\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07]*(?:\x07|\x1b\\))")
+DURATION = re.compile(r"^[1-9][0-9]*(?:ms|s|m|h)$")
+SAFE_VERSION = re.compile(r"^[A-Za-z0-9._-]+$")
+
+TEST_CATALOG = [
+    {
+        "id": "load", "group": "Rendimiento", "title": "Carga sostenida",
+        "description": "Sube gradualmente hasta 300 oyentes y mantiene la carga.",
+        "duration": "≈ 7 min", "destructive": False,
+        "params": [{"name": "repetitions", "label": "Repeticiones", "type": "number", "default": 1, "min": 1, "max": 3}],
+    },
+    {
+        "id": "stress", "group": "Rendimiento", "title": "Estrés progresivo",
+        "description": "Escalones de 250 a 1500 oyentes para localizar el punto de quiebre.",
+        "duration": "≈ 8 min", "destructive": False,
+        "params": [{"name": "repetitions", "label": "Repeticiones", "type": "number", "default": 1, "min": 1, "max": 3}],
+    },
+    {
+        "id": "spike", "group": "Rendimiento", "title": "Pico repentino",
+        "description": "Salto rápido de 20 a 1000 oyentes para medir la reacción del HPA.",
+        "duration": "≈ 4 min", "destructive": False,
+        "params": [{"name": "repetitions", "label": "Repeticiones", "type": "number", "default": 1, "min": 1, "max": 3}],
+    },
+    {
+        "id": "users", "group": "Rendimiento", "title": "Usuarios fijos",
+        "description": "Ejecuta una cantidad exacta de oyentes durante una ventana definida.",
+        "duration": "Configurable", "destructive": False,
+        "params": [
+            {"name": "vus", "label": "Usuarios virtuales", "type": "number", "default": 500, "min": 1, "max": 3000},
+            {"name": "duration", "label": "Duración", "type": "duration", "default": "3m", "placeholder": "3m"},
+            {"name": "repetitions", "label": "Repeticiones", "type": "number", "default": 1, "min": 1, "max": 3},
+        ],
+    },
+    {
+        "id": "worker", "group": "Escalabilidad", "title": "Worker y KEDA",
+        "description": "Sube audios, llena la cola Redis y registra el escalado del worker.",
+        "duration": "Hasta vaciar la cola", "destructive": False,
+        "params": [{"name": "uploads", "label": "Audios a subir", "type": "number", "default": 200, "min": 1, "max": 1000}],
+    },
+    {
+        "id": "pod_failure", "group": "Resiliencia", "title": "Fallo de pod",
+        "description": "Elimina réplicas de una API y mide cuánto tarda Kubernetes en recuperarlas.",
+        "duration": "Según repeticiones", "destructive": True,
+        "confirm": "Se eliminarán pods de la API seleccionada. Kubernetes los recreará automáticamente.",
+        "params": [
+            {"name": "app", "label": "Servicio", "type": "select", "default": "catalog-api", "options": ["catalog-api", "stream-api", "upload-api"]},
+            {"name": "interval", "label": "Intervalo (s)", "type": "number", "default": 15, "min": 1, "max": 120},
+            {"name": "times", "label": "Cantidad de fallos", "type": "number", "default": 6, "min": 1, "max": 20},
+            {"name": "with_load", "label": "Generar carga simultánea", "type": "boolean", "default": True},
+        ],
+    },
+    {
+        "id": "node_failure", "group": "Resiliencia", "title": "Caída de nodo",
+        "description": "Apaga temporalmente un worker de kind y observa la reprogramación de pods.",
+        "duration": "≈ 3 min", "destructive": True,
+        "confirm": "Se apagará temporalmente un nodo Docker del cluster local. Si aloja PostgreSQL, MinIO o Redis, ese servicio también quedará interrumpido hasta restaurarlo.",
+        "params": [
+            {"name": "node", "label": "Nodo", "type": "select", "default": "vibe-worker2", "options": ["vibe-worker", "vibe-worker2", "vibe-worker3"]},
+            {"name": "down", "label": "Segundos apagado", "type": "number", "default": 180, "min": 30, "max": 600},
+            {"name": "with_load", "label": "Generar carga simultánea", "type": "boolean", "default": False},
+        ],
+    },
+    {
+        "id": "db_failure", "group": "Resiliencia", "title": "Reinicio de PostgreSQL",
+        "description": "Recrea el pod de base de datos y comprueba PVC y cantidad de pistas.",
+        "duration": "≈ 1–3 min", "destructive": True,
+        "confirm": "PostgreSQL dejará de estar disponible brevemente mientras Kubernetes recrea el pod.",
+        "params": [{"name": "with_load", "label": "Generar carga simultánea", "type": "boolean", "default": False}],
+    },
+    {
+        "id": "rolling", "group": "Resiliencia", "title": "Rolling update",
+        "description": "Despliega otra etiqueta del frontend, mide errores y restaura la imagen original.",
+        "duration": "≈ 2–7 min", "destructive": True,
+        "confirm": "Se realizará un rolling update real del frontend y luego se restaurará la imagen actual.",
+        "params": [
+            {"name": "version", "label": "Versión temporal", "type": "text", "default": "v2", "placeholder": "v2"},
+            {"name": "with_load", "label": "Generar carga simultánea", "type": "boolean", "default": True},
+        ],
+    },
+    {
+        "id": "oom", "group": "Resiliencia", "title": "Límite de memoria",
+        "description": "Reduce la memoria del worker, encola un audio y verifica OOMKilled.",
+        "duration": "Hasta 4 min", "destructive": True,
+        "confirm": "El worker entrará en OOMKilled. Después usa la acción Restaurar memoria.",
+        "params": [],
+    },
+    {
+        "id": "oom_restore", "group": "Recuperación", "title": "Restaurar memoria",
+        "description": "Devuelve el límite del worker a 512 MiB y espera su recuperación.",
+        "duration": "≈ 1 min", "destructive": False, "params": [],
+    },
+]
+TEST_BY_ID = {item["id"]: item for item in TEST_CATALOG}
+STATELESS_APPS = {"frontend", "catalog-api", "upload-api", "stream-api", "worker"}
+
+
+def test_catalog_view():
+    """Return the catalog with node choices annotated from the latest cluster snapshot."""
+    catalog = copy.deepcopy(TEST_CATALOG)
+    data = STATE.get("data") or {}
+    workers = [node["name"] for node in data.get("nodes", []) if node.get("role") == "worker" and node.get("ready")]
+    pods = [pod for pod in data.get("pods", []) if pod.get("state") != "Terminating"]
+    if not workers:
+        return catalog
+
+    stateless = {
+        node: [pod for pod in pods if pod.get("node") == node and pod.get("app") in STATELESS_APPS]
+        for node in workers
+    }
+    stateful = {
+        node: [pod for pod in pods if pod.get("node") == node and pod.get("pvcs")]
+        for node in workers
+    }
+    candidates = [node for node in workers if stateless[node]]
+    penalty = {"postgres": 100, "minio": 50, "redis": 20}
+
+    def risk(node):
+        return sum(penalty.get(pod.get("app"), 10) for pod in stateful[node])
+
+    recommended = min(candidates, key=lambda node: (risk(node), -len(stateless[node]), node)) if candidates else workers[0]
+    ordered = sorted(workers, key=lambda node: (node not in candidates, node != recommended, risk(node), node))
+    labels = {}
+    for node in ordered:
+        services = ", ".join(sorted({pod.get("app", "?") for pod in stateful[node]})) or "sin PVC"
+        labels[node] = f"{node} — {len(stateless[node])} pods stateless; {services}"
+
+    node_test = next(test for test in catalog if test["id"] == "node_failure")
+    node_param = next(param for param in node_test["params"] if param["name"] == "node")
+    node_param.update({
+        "default": recommended,
+        "options": ordered,
+        "option_labels": labels,
+        "help": "La recomendación se recalcula según la ubicación actual de los pods.",
+    })
+    return catalog
+
+
+def normalize_params(test_id, supplied):
+    supplied = supplied if isinstance(supplied, dict) else {}
+    spec = TEST_BY_ID[test_id]
+    allowed = {p["name"] for p in spec["params"]}
+    unknown = set(supplied) - allowed
+    if unknown:
+        raise ValueError(f"Parámetros desconocidos: {', '.join(sorted(unknown))}")
+    result = {}
+    for field in spec["params"]:
+        name, kind = field["name"], field["type"]
+        value = supplied.get(name, field.get("default"))
+        if kind == "number":
+            if isinstance(value, bool):
+                raise ValueError(f"{field['label']} debe ser un número")
+            try:
+                value = int(value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{field['label']} debe ser un entero") from exc
+            if value < field["min"] or value > field["max"]:
+                raise ValueError(f"{field['label']} debe estar entre {field['min']} y {field['max']}")
+        elif kind == "boolean":
+            if not isinstance(value, bool):
+                raise ValueError(f"{field['label']} debe ser verdadero o falso")
+        elif kind == "select":
+            if value not in field["options"]:
+                raise ValueError(f"Valor inválido para {field['label']}")
+        elif kind == "duration":
+            value = str(value)
+            if not DURATION.fullmatch(value):
+                raise ValueError(f"{field['label']} debe tener formato como 30s, 3m o 1h")
+        elif kind == "text":
+            value = str(value).strip()
+            if not SAFE_VERSION.fullmatch(value):
+                raise ValueError(f"{field['label']} contiene caracteres inválidos")
+        result[name] = value
+    return result
+
+
+def make_command(test_id, params):
+    commands = {
+        "load": ["make", "--silent", "k6-load"],
+        "stress": ["make", "--silent", "k6-stress"],
+        "spike": ["make", "--silent", "k6-spike"],
+        "users": ["make", "--silent", "k6-users", f"VUS={params.get('vus')}", f"DURATION={params.get('duration')}"],
+        "worker": ["make", "--silent", "worker-scale", f"UPLOADS={params.get('uploads')}"],
+        "pod_failure": ["make", "--silent", "chaos-pod", f"INTERVAL={params.get('interval')}", f"TIMES={params.get('times')}", f"APP={params.get('app')}"],
+        "node_failure": ["make", "--silent", "chaos-node", f"NODE={params.get('node')}", f"DOWN={params.get('down')}"],
+        "db_failure": ["make", "--silent", "chaos-db"],
+        "rolling": ["make", "--silent", "chaos-rolling", f"VERSION={params.get('version')}"],
+        "oom": ["make", "--silent", "chaos-oom"],
+        "oom_restore": ["make", "--silent", "chaos-oom-restore"],
+    }
+    return commands[test_id]
+
+
+class TestManager:
+    def __init__(self):
+        self.lock = threading.RLock()
+        self.current = None
+        self.history = deque(maxlen=10)
+        self.logs = deque(maxlen=800)
+        self.log_seq = 0
+        self.processes = {}
+        self.cancel_event = threading.Event()
+
+    def _log(self, source, message):
+        message = ANSI.sub("", str(message)).replace("\x00", "").strip()
+        if not message:
+            return
+        with self.lock:
+            self.log_seq += 1
+            self.logs.append({"seq": self.log_seq, "time": datetime.now().strftime("%H:%M:%S"), "source": source, "text": message})
+
+    def status(self):
+        with self.lock:
+            current = dict(self.current) if self.current else None
+            if current and current.get("started_epoch"):
+                end = current.get("ended_epoch") or time.time()
+                current["elapsed_seconds"] = round(end - current["started_epoch"], 1)
+            if current:
+                current.pop("started_epoch", None)
+                current.pop("ended_epoch", None)
+            return {"current": current, "logs": list(self.logs), "history": list(self.history)}
+
+    def start(self, test_id, supplied):
+        if test_id not in TEST_BY_ID:
+            raise ValueError("Prueba desconocida")
+        params = normalize_params(test_id, supplied)
+        with self.lock:
+            if self.current and self.current["status"] in {"starting", "running", "stopping"}:
+                raise RuntimeError("Ya hay una prueba en ejecución")
+            spec = TEST_BY_ID[test_id]
+            self.logs.clear()
+            self.log_seq = 0
+            self.processes.clear()
+            self.cancel_event = threading.Event()
+            self.current = {
+                "id": f"{int(time.time())}-{test_id}", "test_id": test_id,
+                "title": spec["title"], "group": spec["group"], "params": params,
+                "status": "starting", "phase": "Preparando", "outcome": None,
+                "started_at": datetime.now().isoformat(timespec="seconds"),
+                "started_epoch": time.time(), "ended_at": None, "ended_epoch": None,
+                "exit_code": None, "error": None, "artifacts": [],
+            }
+        threading.Thread(target=self._run, args=(test_id, params), daemon=True).start()
+        return self.status()["current"]
+
+    def _set(self, **changes):
+        with self.lock:
+            if self.current:
+                self.current.update(changes)
+
+    def _spawn(self, command, label):
+        if not VIBE_DIR.is_dir():
+            raise RuntimeError(f"No existe {VIBE_DIR}")
+        kwargs = {
+            "cwd": VIBE_DIR, "stdout": subprocess.PIPE, "stderr": subprocess.STDOUT,
+            "stdin": subprocess.DEVNULL, "bufsize": 0,
+        }
+        if os.name == "nt":
+            kwargs["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+        else:
+            kwargs["start_new_session"] = True
+        proc = subprocess.Popen(command, **kwargs)
+        with self.lock:
+            self.processes[proc.pid] = proc
+        self._log("sistema", f"Iniciando: {label}")
+        pump = threading.Thread(target=self._pump, args=(proc, label), daemon=True)
+        pump.start()
+        return proc, pump
+
+    def _pump(self, proc, label):
+        decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        pending = ""
+        while True:
+            chunk = proc.stdout.read(512) if proc.stdout else b""
+            if not chunk:
+                break
+            pending += decoder.decode(chunk)
+            parts = re.split(r"[\r\n]+", pending)
+            pending = parts.pop()
+            for line in parts:
+                self._log(label, line)
+        pending += decoder.decode(b"", final=True)
+        self._log(label, pending)
+
+    def _wait(self, proc, pump):
+        code = proc.wait()
+        pump.join(timeout=2)
+        if proc.stdout:
+            proc.stdout.close()
+        with self.lock:
+            self.processes.pop(proc.pid, None)
+        return code
+
+    def _sleep_cancelable(self, seconds):
+        return self.cancel_event.wait(seconds)
+
+    def _run_once(self, test_id, params, repetition, total):
+        self._set(phase=f"Ejecución {repetition}/{total}")
+        if total > 1:
+            self._log("sistema", f"Repetición {repetition} de {total}")
+        companion = None
+        if params.get("with_load"):
+            companion = self._spawn(["make", "--silent", "k6-load"], "carga")
+            self._set(phase="Estabilizando carga simultánea")
+            if self._sleep_cancelable(10):
+                return [self._wait(*companion)]
+        main = self._spawn(make_command(test_id, params), TEST_BY_ID[test_id]["title"])
+        self._set(status="running", phase=TEST_BY_ID[test_id]["title"])
+        codes = [self._wait(*main)]
+        if companion:
+            if not self.cancel_event.is_set() and companion[0].poll() is None:
+                self._set(phase="Completando carga simultánea")
+                self._log("sistema", "La simulación terminó; esperando el resumen de carga")
+            codes.append(self._wait(*companion))
+        return codes
+
+    def _prepare(self, test_id, params):
+        context = {}
+        if test_id == "node_failure":
+            result = subprocess.run(
+                [
+                    "kubectl", "-n", "vibe", "get", "pods",
+                    f"--field-selector=spec.nodeName={params['node']}", "-o", "json",
+                ],
+                cwd=VIBE_DIR, capture_output=True, text=True, timeout=20,
+            )
+            if result.returncode:
+                raise RuntimeError(result.stderr.strip() or "No se pudo inspeccionar el nodo elegido")
+            items = json.loads(result.stdout).get("items", [])
+            stateless_apps = sorted({
+                pod.get("metadata", {}).get("labels", {}).get("app")
+                for pod in items
+                if pod.get("metadata", {}).get("labels", {}).get("app") in STATELESS_APPS
+                and not pod.get("metadata", {}).get("deletionTimestamp")
+            })
+            if not stateless_apps:
+                raise RuntimeError(
+                    f"{params['node']} no aloja pods stateless en este momento. "
+                    "Recarga el panel y elige el nodo recomendado."
+                )
+            stateful = []
+            for pod in items:
+                volumes = pod.get("spec", {}).get("volumes", [])
+                claims = [
+                    volume["persistentVolumeClaim"]["claimName"]
+                    for volume in volumes if "persistentVolumeClaim" in volume
+                ]
+                owners = pod.get("metadata", {}).get("ownerReferences", [])
+                is_stateful = claims or any(owner.get("kind") == "StatefulSet" for owner in owners)
+                if is_stateful:
+                    name = pod.get("metadata", {}).get("name", "pod desconocido")
+                    detail = f" (PVC: {', '.join(claims)})" if claims else ""
+                    stateful.append(f"{name}{detail}")
+            if stateful:
+                self._log(
+                    "sistema",
+                    f"ADVERTENCIA: {params['node']} aloja servicios con estado: "
+                    f"{'; '.join(stateful)}. También estarán inaccesibles mientras el nodo permanezca apagado.",
+                )
+        elif test_id == "rolling":
+            result = subprocess.run(
+                ["kubectl", "-n", "vibe", "get", "deployment/frontend", "-o", "jsonpath={.spec.template.spec.containers[0].image}"],
+                cwd=VIBE_DIR, capture_output=True, text=True, timeout=20,
+            )
+            if result.returncode:
+                raise RuntimeError(result.stderr.strip() or "No se pudo consultar la imagen del frontend")
+            context["original_image"] = result.stdout.strip()
+        return context
+
+    def _cleanup(self, test_id, params, context, abnormal):
+        try:
+            if test_id == "node_failure":
+                subprocess.run(["docker", "start", params["node"]], capture_output=True, timeout=30, cwd=VIBE_DIR)
+            elif test_id == "rolling" and context.get("original_image"):
+                subprocess.run(
+                    ["kubectl", "-n", "vibe", "set", "image", "deployment/frontend", f"frontend={context['original_image']}"],
+                    capture_output=True, timeout=30, cwd=VIBE_DIR,
+                )
+                subprocess.run(
+                    ["kubectl", "-n", "vibe", "rollout", "status", "deployment/frontend", "--timeout=180s"],
+                    capture_output=True, timeout=190, cwd=VIBE_DIR,
+                )
+            elif test_id == "oom" and abnormal:
+                subprocess.run(["make", "--silent", "chaos-oom-restore"], capture_output=True, timeout=190, cwd=VIBE_DIR)
+        except Exception as exc:  # noqa: BLE001
+            self._log("sistema", f"Aviso durante restauración: {exc}")
+
+    def _artifacts(self, started):
+        root = VIBE_DIR / "docs" / "evidencia"
+        if not root.is_dir():
+            return []
+        return [
+            p.name for p in sorted(root.iterdir(), key=lambda item: item.stat().st_mtime, reverse=True)
+            if p.is_file() and p.stat().st_mtime >= started - 1
+        ][:50]
+
+    def _run(self, test_id, params):
+        codes, context = [], {}
+        final_status, final_outcome, final_error = "failed", "error", None
+        try:
+            self._set(status="running", phase="Validando entorno")
+            context = self._prepare(test_id, params)
+            repetitions = params.get("repetitions", 1)
+            for repetition in range(1, repetitions + 1):
+                if self.cancel_event.is_set():
+                    break
+                codes.extend(self._run_once(test_id, params, repetition, repetitions))
+            cancelled = self.cancel_event.is_set()
+            hard_failures = [code for code in codes if code not in (0, 99, 130)]
+            if cancelled:
+                final_status, final_outcome = "cancelled", "cancelled"
+            elif hard_failures:
+                final_status, final_outcome = "failed", "error"
+            elif 99 in codes:
+                final_status, final_outcome = "completed", "slo_failed"
+            else:
+                final_status, final_outcome = "completed", "passed"
+        except Exception as exc:  # noqa: BLE001
+            self._log("sistema", f"Error: {exc}")
+            final_status = "cancelled" if self.cancel_event.is_set() else "failed"
+            final_outcome = "cancelled" if self.cancel_event.is_set() else "error"
+            final_error = str(exc)
+        finally:
+            abnormal = self.cancel_event.is_set() or final_status == "failed"
+            self._set(status="stopping" if self.cancel_event.is_set() else "running", phase="Restaurando entorno")
+            self._cleanup(test_id, params, context, abnormal)
+            if self.cancel_event.is_set():
+                final_status, final_outcome = "cancelled", "cancelled"
+            with self.lock:
+                if self.current:
+                    ended = time.time()
+                    self.current.update({
+                        "status": final_status, "outcome": final_outcome,
+                        "exit_code": max(codes) if codes else (130 if final_status == "cancelled" else 1 if final_status == "failed" else 0),
+                        "error": final_error, "phase": "Finalizada",
+                        "ended_at": datetime.now().isoformat(timespec="seconds"), "ended_epoch": ended,
+                        "artifacts": self._artifacts(self.current["started_epoch"]),
+                    })
+                    summary = {k: v for k, v in self.current.items() if k not in {"started_epoch", "ended_epoch"}}
+                    self.history.appendleft(summary)
+
+    def _terminate_tree(self, proc):
+        if proc.poll() is not None:
+            return
+        try:
+            if os.name == "nt":
+                proc.send_signal(signal.CTRL_BREAK_EVENT)
+            else:
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+        except Exception:  # noqa: BLE001
+            pass
+        try:
+            proc.wait(timeout=4)
+            return
+        except subprocess.TimeoutExpired:
+            pass
+        try:
+            if os.name == "nt":
+                subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True, timeout=15)
+            else:
+                os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+        except Exception as exc:  # noqa: BLE001
+            self._log("sistema", f"No se pudo cerrar un proceso: {exc}")
+
+    def stop(self):
+        with self.lock:
+            if not self.current or self.current["status"] not in {"starting", "running", "stopping"}:
+                raise RuntimeError("No hay una prueba en ejecución")
+            self.current.update({"status": "stopping", "phase": "Deteniendo y restaurando"})
+            self.cancel_event.set()
+            processes = list(self.processes.values())
+        self._log("sistema", "Cancelación solicitada")
+        for proc in processes:
+            self._terminate_tree(proc)
+        return self.status()["current"]
+
+    def shutdown(self):
+        with self.lock:
+            active = self.current and self.current["status"] in {"starting", "running", "stopping"}
+        if active:
+            try:
+                self.stop()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+TEST_MANAGER = TestManager()
 
 
 # ---------- kubectl ----------
@@ -320,16 +814,63 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(code)
         self.send_header("Content-Type", ctype)
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
+    def send_json(self, code, value):
+        self.send(code, json.dumps(value, ensure_ascii=False).encode("utf-8"), "application/json; charset=utf-8")
+
+    def read_json(self):
+        ctype = self.headers.get("Content-Type", "").split(";", 1)[0].strip().lower()
+        if ctype != "application/json":
+            raise ValueError("Content-Type debe ser application/json")
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError as exc:
+            raise ValueError("Content-Length inválido") from exc
+        if length < 1 or length > 65536:
+            raise ValueError("Cuerpo vacío o demasiado grande")
+        try:
+            value = json.loads(self.rfile.read(length))
+        except json.JSONDecodeError as exc:
+            raise ValueError("JSON inválido") from exc
+        if not isinstance(value, dict):
+            raise ValueError("El cuerpo debe ser un objeto JSON")
+        return value
+
     def do_GET(self):
         if self.path.startswith("/api/cluster"):
-            self.send(200, json.dumps({"data": STATE["data"], "error": STATE["error"], "script": STATE["script"]}).encode(), "application/json")
+            self.send_json(200, {"data": STATE["data"], "error": STATE["error"], "script": STATE["script"]})
+        elif self.path == "/api/tests/catalog":
+            self.send_json(200, {"tests": test_catalog_view()})
+        elif self.path == "/api/tests/status":
+            self.send_json(200, TEST_MANAGER.status())
         elif self.path == "/" or self.path.startswith("/index"):
             self.send(200, (HERE / "index.html").read_bytes(), "text/html; charset=utf-8")
         else:
             self.send(404, b"not found", "text/plain")
+
+    def do_POST(self):
+        try:
+            payload = self.read_json()
+            if self.path == "/api/tests/start":
+                test_id = payload.get("test_id")
+                if not isinstance(test_id, str):
+                    raise ValueError("Falta test_id")
+                current = TEST_MANAGER.start(test_id, payload.get("params", {}))
+                self.send_json(202, {"current": current})
+            elif self.path == "/api/tests/stop":
+                current = TEST_MANAGER.stop()
+                self.send_json(202, {"current": current})
+            else:
+                self.send_json(404, {"error": "Ruta no encontrada"})
+        except ValueError as exc:
+            self.send_json(400, {"error": str(exc)})
+        except RuntimeError as exc:
+            self.send_json(409, {"error": str(exc)})
+        except Exception as exc:  # noqa: BLE001
+            self.send_json(500, {"error": str(exc)})
 
 
 def main():
@@ -347,6 +888,8 @@ def main():
         ThreadingHTTPServer(("127.0.0.1", ARGS.port), Handler).serve_forever()
     except KeyboardInterrupt:
         pass
+    finally:
+        TEST_MANAGER.shutdown()
 
 
 if __name__ == "__main__":

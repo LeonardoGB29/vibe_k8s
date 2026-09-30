@@ -120,19 +120,7 @@ python3 server.py --ns monitoring  # otro namespace
 ## 3. Pruebas
 
 Con la app en Kubernetes y el visor abierto en las pestañas **Tráfico** y **Escalado**:
-
-| Prueba | Comando (desde `vibe/`) | Qué observar |
-|---|---|---|
-| Carga (300 usuarios) | `make k6-load` | p95, tasa de error, réplicas de api subiendo |
-| Estrés (hasta 1500) | `make k6-stress` | punto de quiebre |
-| Pico (0 a 1000 en 10 s) | `make k6-spike` | cuánto tarda el HPA en reaccionar |
-| N usuarios concretos | `k6 run -e BASE_URL=http://localhost --vus 500 --duration 3m tests/k6/load.js` | |
-| Escalabilidad del worker | `make seed` o `make k6-upload` | KEDA: worker de 1 a 30 pods |
-| Fallo de pod | `chaos/pod-kill.sh 15 6` (con k6-load corriendo) | tiempo de recuperación, errores |
-| Fallo de nodo | `chaos/node-down.sh vibe-worker 180` | pods reprogramados en otros nodos |
-| Fallo de base de datos | `chaos/db-kill.sh` | datos intactos gracias al PVC |
-| Rolling update | `chaos/rolling-update.sh v2` (con k6-load corriendo) | cero errores durante el despliegue |
-| Límite de memoria | `chaos/oom.sh` y luego `chaos/oom.sh restore` | OOMKilled y reinicio automático |
+e34
 
 Cada usuario virtual de k6 se comporta como un oyente: lista el catálogo, pide la playlist HLS y
 descarga segmentos de audio. Al terminar, k6 imprime `http_req_duration p(95)`, `http_req_failed`

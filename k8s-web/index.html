@@ -49,6 +49,19 @@ pre.term{background:#0f2545;color:#dbe7ff;padding:16px;border-radius:12px;font:1
 .hint{color:var(--muted);font-size:13px}
 canvas{width:100%;height:120px;display:block}
 .legend{display:flex;gap:16px;font-size:12px;color:var(--muted);margin-top:6px}.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px;vertical-align:middle}
+.test-groups{display:grid;gap:18px}.test-group h3{margin:0 0 9px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted)}
+.test-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:10px}
+.test-card{appearance:none;text-align:left;border:1px solid var(--line);border-radius:12px;background:#fbfdff;padding:13px;cursor:pointer;color:var(--text);font:inherit;transition:.15s}
+.test-card:hover{border-color:#9db9ec;transform:translateY(-1px)}.test-card.on{border:2px solid var(--blue);background:var(--blue-soft);padding:12px}
+.test-card strong{display:block;font-size:14px;margin-bottom:4px}.test-card small{display:block;color:var(--muted);line-height:1.35}.test-card .meta{margin-top:8px;color:var(--blue);font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.05em}
+.form-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:14px 0}.field{display:flex;flex-direction:column;gap:5px}.field label{font-size:12px;color:var(--muted);font-weight:700}
+.field input,.field select{width:100%;border:1px solid var(--line);border-radius:9px;background:#fff;padding:9px 10px;color:var(--text);font:13px var(--mono)}
+.field.check{flex-direction:row;align-items:center;background:#f7faff;border:1px solid var(--line);padding:10px;border-radius:9px}.field.check input{width:auto}.field.check label{color:var(--text)}
+.actions{display:flex;align-items:center;gap:9px;flex-wrap:wrap}.btn{border:0;border-radius:9px;padding:9px 15px;font:700 13px Manrope,system-ui;cursor:pointer;background:var(--blue);color:#fff}.btn:hover{filter:brightness(.95)}.btn:disabled{opacity:.45;cursor:not-allowed}.btn.danger{background:var(--bad)}.btn.ghost{background:#e8eef7;color:var(--text)}
+.warning{background:#fff7ed;border:1px solid #fed7aa;color:#9a4d08;padding:10px 12px;border-radius:9px;font-size:12px;margin:10px 0}
+.run-head{display:flex;align-items:center;gap:9px;margin-bottom:12px}.run-head strong{font-size:17px}.run-head .st{margin-left:auto}.run-info{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.run-info div{background:#f7faff;border:1px solid var(--line);padding:9px;border-radius:9px}.run-info small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase}.run-info b{display:block;margin-top:3px}
+.test-message{margin-top:10px;font-size:12px;color:var(--bad)}pre.live{background:#0b1629;color:#dbe7ff;padding:14px;border-radius:10px;font:12px/1.45 var(--mono);height:330px;overflow:auto;white-space:pre-wrap;margin:0}.log-system{color:#93c5fd}
+.artifact-list{display:flex;gap:6px;flex-wrap:wrap;margin-top:10px}.artifact{font:11px var(--mono);background:#eef4ff;border:1px solid #ccdafa;border-radius:6px;padding:4px 7px;color:var(--blue)}
 /* arquitectura */
 #arch{width:100%;height:auto;display:block}
 .n-box{fill:#fff;stroke:var(--line);stroke-width:1.2;rx:10}
@@ -71,6 +84,7 @@ canvas{width:100%;height:120px;display:block}
   <button data-t="scale">Escalado</button>
   <button data-t="net">Red y almacenamiento</button>
   <button data-t="events">Eventos</button>
+  <button data-t="tests">Pruebas</button>
   <button data-t="term">Terminal</button>
 </nav>
 <main>
@@ -121,6 +135,33 @@ canvas{width:100%;height:120px;display:block}
 
   <div data-p="events" hidden><div class="card"><h2>Últimos eventos</h2><div id="events"></div></div></div>
 
+  <div data-p="tests" hidden>
+    <div class="card"><h2>Centro de pruebas</h2><p class="hint">Selecciona un escenario. Solo puede ejecutarse uno a la vez y las simulaciones de fallo siempre requieren confirmación.</p><div class="test-groups" id="test-groups"><p class="hint">cargando pruebas...</p></div></div>
+    <div class="two">
+      <div class="card">
+        <h2>Configurar escenario</h2>
+        <h3 id="test-title" style="margin:0">Selecciona una prueba</h3>
+        <p class="hint" id="test-desc"></p>
+        <div class="form-grid" id="test-form"></div>
+        <div class="warning" id="test-warning" hidden></div>
+        <div class="actions"><button class="btn" id="test-start" disabled>Iniciar prueba</button></div>
+        <div class="test-message" id="test-message"></div>
+      </div>
+      <div class="card">
+        <h2>Ejecución actual</h2>
+        <div id="run-empty" class="hint">No hay una prueba activa.</div>
+        <div id="run-current" hidden>
+          <div class="run-head"><strong id="run-title"></strong><span class="st" id="run-status"></span></div>
+          <div class="run-info"><div><small>Fase</small><b id="run-phase"></b></div><div><small>Tiempo</small><b id="run-time"></b></div><div><small>Resultado</small><b id="run-outcome"></b></div><div><small>Finalización</small><b id="run-ended"></b></div></div>
+          <div class="artifact-list" id="run-artifacts"></div>
+          <div class="actions" style="margin-top:12px"><button class="btn danger" id="test-stop">Detener y restaurar</button></div>
+        </div>
+      </div>
+    </div>
+    <div class="card"><h2>Salida en tiempo real</h2><pre class="live" id="test-log">esperando una prueba...</pre></div>
+    <div class="card"><h2>Últimas ejecuciones</h2><div style="overflow:auto"><table id="test-history"></table></div></div>
+  </div>
+
   <div data-p="term" hidden><div class="card"><h2>Salida de cluster-status.sh (se actualiza cada ~6 s)</h2><pre class="term" id="term">esperando...</pre></div></div>
 </main>
 
@@ -136,6 +177,91 @@ const stClass=s=>s==="Running"?"":["Pending","ContainerCreating","Terminating","
 const hist={a:[],aCpu:[],b:[],rps:[],seg:[]}, MAX=150; const push=(k,v)=>{hist[k].push(v);if(hist[k].length>MAX)hist[k].shift();};
 let tab="arch";
 $("#tabs").addEventListener("click",e=>{const b=e.target.closest("button");if(!b)return;tab=b.dataset.t;$$("#tabs button").forEach(x=>x.classList.toggle("on",x===b));$$("[data-p]").forEach(p=>p.hidden=p.dataset.p!==tab);});
+
+let testCatalog=[],selectedTest=null,lastTestState=null;
+const activeState=s=>["starting","running","stopping"].includes(s);
+const testStatusLabel=s=>({starting:"preparando",running:"ejecutando",stopping:"deteniendo",completed:"completada",failed:"fallida",cancelled:"cancelada"}[s]||s||"-");
+const outcomeLabel=s=>({passed:"correcta",slo_failed:"SLO incumplido",error:"con errores",cancelled:"cancelada"}[s]||"-");
+const fmtTime=s=>{s=Math.max(0,Math.round(s||0));return `${Math.floor(s/60)}m ${String(s%60).padStart(2,"0")}s`;};
+
+async function postJSON(url,body){
+  const response=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+  const data=await response.json().catch(()=>({error:`HTTP ${response.status}`}));
+  if(!response.ok)throw new Error(data.error||`HTTP ${response.status}`);
+  return data;
+}
+
+async function loadTestCatalog(){
+  try{
+    const response=await fetch("/api/tests/catalog");
+    if(!response.ok)throw new Error(`HTTP ${response.status}`);
+    testCatalog=(await response.json()).tests||[];
+    renderTestCatalog();
+    if(testCatalog.length)selectTest(testCatalog[0].id);
+  }catch(error){$("#test-groups").innerHTML=`<div class="err">No se pudo cargar el catálogo: ${esc(error.message)}</div>`;}
+}
+
+function renderTestCatalog(){
+  const groups={};testCatalog.forEach(test=>(groups[test.group]??=[]).push(test));
+  $("#test-groups").innerHTML=Object.entries(groups).map(([group,tests])=>`<div class="test-group"><h3>${esc(group)}</h3><div class="test-grid">${tests.map(test=>`<button class="test-card ${selectedTest?.id===test.id?"on":""}" data-test-id="${esc(test.id)}"><strong>${esc(test.title)}</strong><small>${esc(test.description)}</small><div class="meta">${esc(test.duration)}${test.destructive?" · confirmación":""}</div></button>`).join("")}</div></div>`).join("");
+}
+
+function selectTest(id){
+  selectedTest=testCatalog.find(test=>test.id===id);if(!selectedTest)return;
+  renderTestCatalog();
+  $("#test-title").textContent=selectedTest.title;
+  $("#test-desc").textContent=selectedTest.description;
+  $("#test-warning").hidden=!selectedTest.destructive;
+  $("#test-warning").textContent=selectedTest.confirm||"Esta prueba modifica temporalmente el estado del cluster.";
+  $("#test-form").innerHTML=selectedTest.params.map(field=>{
+    const id=`param-${field.name}`;
+    if(field.type==="boolean")return `<div class="field check"><input data-param="${esc(field.name)}" id="${id}" type="checkbox" ${field.default?"checked":""}><label for="${id}">${esc(field.label)}</label></div>`;
+    if(field.type==="select")return `<div class="field"><label for="${id}">${esc(field.label)}</label><select data-param="${esc(field.name)}" id="${id}">${field.options.map(option=>`<option value="${esc(option)}" ${option===field.default?"selected":""}>${esc(field.option_labels?.[option]||option)}</option>`).join("")}</select>${field.help?`<div class="hint">${esc(field.help)}</div>`:""}</div>`;
+    const type=field.type==="number"?"number":"text";
+    return `<div class="field"><label for="${id}">${esc(field.label)}</label><input data-param="${esc(field.name)}" id="${id}" type="${type}" value="${esc(field.default??"")}" ${field.min!=null?`min="${field.min}" max="${field.max}"`:""} placeholder="${esc(field.placeholder||"")}"></div>`;
+  }).join("")||'<p class="hint">Este escenario no necesita parámetros.</p>';
+  $("#test-start").textContent=selectedTest.id==="oom_restore"?"Restaurar memoria":selectedTest.destructive?"Ejecutar simulación":"Iniciar prueba";
+  $("#test-start").disabled=activeState(lastTestState?.current?.status);
+  $("#test-message").textContent="";
+}
+
+$("#test-groups").addEventListener("click",event=>{const card=event.target.closest("[data-test-id]");if(card)selectTest(card.dataset.testId);});
+$("#test-start").addEventListener("click",async()=>{
+  if(!selectedTest)return;
+  if(selectedTest.destructive&&!confirm(selectedTest.confirm+"\n\n¿Deseas continuar?"))return;
+  const params={};$$("#test-form [data-param]").forEach(input=>{params[input.dataset.param]=input.type==="checkbox"?input.checked:input.type==="number"?Number(input.value):input.value;});
+  $("#test-start").disabled=true;$("#test-message").textContent="";
+  try{await postJSON("/api/tests/start",{test_id:selectedTest.id,params});await tickTests();}
+  catch(error){$("#test-message").textContent=error.message;$("#test-start").disabled=false;}
+});
+$("#test-stop").addEventListener("click",async()=>{
+  if(!confirm("Se detendrá la prueba y se restaurarán los recursos temporales. ¿Continuar?"))return;
+  $("#test-stop").disabled=true;
+  try{await postJSON("/api/tests/stop",{});await tickTests();}catch(error){$("#test-message").textContent=error.message;$("#test-stop").disabled=false;}
+});
+
+function renderTestState(state){
+  lastTestState=state;const current=state.current;const active=activeState(current?.status);
+  $("#run-empty").hidden=!!current;$("#run-current").hidden=!current;
+  if(selectedTest)$("#test-start").disabled=active;
+  if(current){
+    $("#run-title").textContent=current.title;$("#run-status").textContent=testStatusLabel(current.status);
+    $("#run-status").className=`st ${current.status==="failed"?"bad":active?"warn":""}`;
+    $("#run-phase").textContent=current.phase||"-";$("#run-time").textContent=fmtTime(current.elapsed_seconds);
+    $("#run-outcome").textContent=outcomeLabel(current.outcome);$("#run-ended").textContent=current.ended_at?current.ended_at.split("T")[1]:"en curso";
+    $("#test-stop").hidden=!active;$("#test-stop").disabled=current.status==="stopping";
+    $("#run-artifacts").innerHTML=(current.artifacts||[]).map(name=>`<span class="artifact">${esc(name)}</span>`).join("");
+  }
+  const log=$("#test-log"),nearBottom=log.scrollHeight-log.scrollTop-log.clientHeight<45;
+  log.textContent=(state.logs||[]).map(line=>`[${line.time}] ${line.source}: ${line.text}`).join("\n")||"esperando una prueba...";
+  if(nearBottom)log.scrollTop=log.scrollHeight;
+  $("#test-history").innerHTML=`<tr><th>Prueba</th><th>Estado</th><th>Resultado</th><th>Inicio</th><th>Fin</th></tr>`+(state.history||[]).map(run=>`<tr><td>${esc(run.title)}</td><td><span class="st ${run.status==="failed"?"bad":""}">${esc(testStatusLabel(run.status))}</span></td><td>${esc(outcomeLabel(run.outcome))}</td><td class="mono">${esc(run.started_at||"")}</td><td class="mono">${esc(run.ended_at||"")}</td></tr>`).join("");
+}
+
+async function tickTests(){
+  try{const response=await fetch("/api/tests/status");if(!response.ok)throw new Error(`HTTP ${response.status}`);renderTestState(await response.json());}
+  catch(error){$("#test-message").textContent=`Estado de pruebas no disponible: ${error.message}`;}
+}
 
 function render(d){
   const ready=d.pods.filter(p=>p.ready).length;
@@ -256,6 +382,7 @@ async function tick(){
   }catch(e){$("#dot").classList.add("bad");}
 }
 tick();setInterval(tick,2000);
+loadTestCatalog();tickTests();setInterval(tickTests,1000);
 </script>
 </body>
 </html>

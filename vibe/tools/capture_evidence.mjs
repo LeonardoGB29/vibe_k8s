@@ -108,8 +108,9 @@ async function captureK8sWeb() {
     await send("Page.enable");
     await send("Runtime.enable");
     await sleep(Number(args.wait || 7000));
+    const tab = JSON.stringify(args.tab || "traffic");
     await send("Runtime.evaluate", {
-      expression: `document.querySelector('button[data-t="traffic"]')?.click()`,
+      expression: `document.querySelector('button[data-t=' + ${tab} + ']')?.click()`,
     });
     await sleep(2500);
     await screenshot(send);
