@@ -105,3 +105,24 @@ jobs:
           kubectl -n vibe get pods -o wide
           kubectl -n vibe describe pods | tail -n 150
           kubectl -n vibe logs -l 'app in (catalog-api,upload-api,stream-api,worker)' --tail=50 --prefix || true
+
+  terraform:
+    name: Terraform (${{ matrix.dir }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [bootstrap, envs/desarrollo]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.6
+      - name: fmt
+        run: terraform fmt -check -recursive
+        working-directory: vibe/terraform
+      - name: init + validate
+        run: |
+          terraform init -backend=false -input=false -lockfile=readonly
+          terraform validate
+        working-directory: vibe/terraform/${{ matrix.dir }}
