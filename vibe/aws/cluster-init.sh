@@ -108,8 +108,8 @@ stringData:
   MINIO_SESSION_TOKEN: "$AWS_ST"
 EOF
 
-echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios (overlay aws) ==="
-kubectl apply -k k8s/overlays/aws
+echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios (overlay desarrollo) ==="
+kubectl apply -k k8s/overlays/desarrollo
 
 echo "Esperando que Postgres y Redis esten listos..."
 kubectl rollout status statefulset/postgres -n vibe --timeout=120s
