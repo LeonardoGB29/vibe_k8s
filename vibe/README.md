@@ -110,7 +110,7 @@ redis list: keda_scaler_metrics_value{scaledObject="worker"}
 api/         FastAPI + frontend estático (app/static)
 worker/      transcodificador ffmpeg
 tools/       gen_audio.py (dataset), seed.py (carga masiva)
-k8s/         kustomize: base/ (común), overlays/{kind,aws}, legacy/ (monolito) y kind-config.yaml
+k8s/         kustomize: base/ (común), overlays/{test,desarrollo}, legacy/ (monolito) y kind-config.yaml
 tests/k6/    load, stress, spike, upload
 chaos/       scripts de tolerancia a fallos
 docs/        informe y evidencia

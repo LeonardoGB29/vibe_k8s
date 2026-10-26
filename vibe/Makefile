@@ -64,15 +64,15 @@ load-ms: ## Carga las 5 imágenes de microservicios en kind
 	kind load docker-image $(MS_IMAGES) --name $(CLUSTER)
 
 # ---------- Despliegue de Microservicios ----------
-deploy-ms: ## Aplica el overlay kind (kustomize) de los microservicios
-	kubectl apply -k k8s/overlays/kind
+deploy-ms: ## Aplica el overlay test (kustomize) de los microservicios
+	kubectl apply -k k8s/overlays/test
 	kubectl -n $(NS) rollout status statefulset/postgres --timeout=180s
 	kubectl -n $(NS) rollout status statefulset/minio --timeout=180s
 	kubectl -n $(NS) rollout status deployment/frontend --timeout=120s
 	kubectl -n $(NS) rollout status deployment/catalog-api --timeout=120s
 	kubectl -n $(NS) rollout status deployment/upload-api --timeout=120s
 	kubectl -n $(NS) rollout status deployment/stream-api --timeout=120s
-	-kubectl apply -f k8s/overlays/kind/monitoring.yaml
+	-kubectl apply -f k8s/overlays/test/monitoring.yaml
 
 undeploy: ## Elimina el namespace y todos los recursos
 	kubectl delete ns $(NS) --ignore-not-found
