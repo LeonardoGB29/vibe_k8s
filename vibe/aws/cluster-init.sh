@@ -55,7 +55,7 @@ echo "=== [5/6] Configurando variables de entorno para AWS S3 ==="
 cd "$REPO_ROOT"
 
 # Crear namespace si no existe
-kubectl apply -f k8s/00-namespace.yaml
+kubectl apply -f k8s/base/00-namespace.yaml
 
 # Obtener credenciales temporales de la instancia (LabRole/LabInstanceProfile)
 # o usar token de sesión si fue provisto
@@ -108,24 +108,12 @@ stringData:
   MINIO_SESSION_TOKEN: "$AWS_ST"
 EOF
 
-echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios ==="
-kubectl apply -f k8s/20-postgres.yaml
-kubectl apply -f k8s/22-redis.yaml
+echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios (overlay aws) ==="
+kubectl apply -k k8s/overlays/aws
 
 echo "Esperando que Postgres y Redis esten listos..."
 kubectl rollout status statefulset/postgres -n vibe --timeout=120s
 kubectl rollout status deployment/redis -n vibe --timeout=60s
-
-kubectl apply -f k8s/30-frontend.yaml
-kubectl apply -f k8s/31-catalog-api.yaml
-kubectl apply -f k8s/32-upload-api.yaml
-kubectl apply -f k8s/33-stream-api.yaml
-kubectl apply -f k8s/34-worker.yaml
-kubectl apply -f "$SCRIPT_DIR/ingress.yaml"
-kubectl apply -f k8s/50-hpa.yaml
-kubectl apply -f k8s/51-keda-worker.yaml
-kubectl -n vibe patch scaledobject worker --type=merge -p '{"spec":{"maxReplicaCount":8}}'
-kubectl apply -f k8s/60-pdb.yaml
 
 echo "Esperando que todos los microservicios inicien..."
 kubectl rollout status deployment/frontend -n vibe --timeout=120s

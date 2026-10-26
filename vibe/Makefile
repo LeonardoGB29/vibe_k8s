@@ -64,24 +64,15 @@ load-ms: ## Carga las 5 imágenes de microservicios en kind
 	kind load docker-image $(MS_IMAGES) --name $(CLUSTER)
 
 # ---------- Despliegue de Microservicios ----------
-deploy-ms: ## Aplica los manifiestos de microservicios
-	kubectl apply -f k8s/00-namespace.yaml
-	kubectl apply -f k8s/10-config.yaml -f k8s/20-postgres.yaml -f k8s/21-minio.yaml -f k8s/22-redis.yaml
+deploy-ms: ## Aplica el overlay kind (kustomize) de los microservicios
+	kubectl apply -k k8s/overlays/kind
 	kubectl -n $(NS) rollout status statefulset/postgres --timeout=180s
 	kubectl -n $(NS) rollout status statefulset/minio --timeout=180s
-	kubectl apply -f k8s/30-frontend.yaml \
-	              -f k8s/31-catalog-api.yaml \
-	              -f k8s/32-upload-api.yaml \
-	              -f k8s/33-stream-api.yaml \
-	              -f k8s/34-worker.yaml \
-	              -f k8s/40-ingress.yaml \
-	              -f k8s/60-pdb.yaml
 	kubectl -n $(NS) rollout status deployment/frontend --timeout=120s
 	kubectl -n $(NS) rollout status deployment/catalog-api --timeout=120s
 	kubectl -n $(NS) rollout status deployment/upload-api --timeout=120s
 	kubectl -n $(NS) rollout status deployment/stream-api --timeout=120s
-	kubectl apply -f k8s/50-hpa.yaml -f k8s/51-keda-worker.yaml
-	-kubectl apply -f k8s/70-monitoring.yaml
+	-kubectl apply -f k8s/overlays/kind/monitoring.yaml
 
 undeploy: ## Elimina el namespace y todos los recursos
 	kubectl delete ns $(NS) --ignore-not-found

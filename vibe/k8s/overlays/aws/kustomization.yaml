@@ -1,0 +1,17 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# vibe-config y vibe-secrets no están aquí: llevan los buckets reales y credenciales
+# temporales, y los crea aws/cluster-init.sh antes de aplicar este overlay.
+resources:
+  - ../../base
+  - ingress.yaml
+
+patches:
+  - target:
+      kind: ScaledObject
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicaCount
+        value: 8
