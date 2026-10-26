@@ -1,0 +1,36 @@
+#!/bin/bash
+set -euo pipefail
+exec > >(tee -a /var/log/vibe-bootstrap.log) 2>&1
+
+hostnamectl set-hostname ${hostname}
+export AWS_DEFAULT_REGION=${region}
+
+dnf install -y docker git jq unzip python3
+systemctl enable --now docker amazon-ssm-agent
+usermod -aG docker ec2-user
+
+if ! command -v aws >/dev/null; then
+  curl -fsSL "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o /tmp/awscliv2.zip
+  unzip -q /tmp/awscliv2.zip -d /tmp/vibe-awscli
+  /tmp/vibe-awscli/aws/install
+fi
+
+# El token del cluster vive en SSM Parameter Store, no en el user-data.
+K3S_TOKEN=$(aws ssm get-parameter --name ${token_parameter} --with-decryption --query Parameter.Value --output text)
+
+# k3s aplica solo los manifiestos de este directorio al arrancar (Traefik como HelmChart).
+install -d /var/lib/rancher/k3s/server/manifests
+cat > /var/lib/rancher/k3s/server/manifests/traefik.yaml <<'MANIFEST'
+${traefik_manifest}
+MANIFEST
+
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" K3S_TOKEN="$K3S_TOKEN" sh -s - server \
+  --disable traefik \
+  --node-name ${hostname} \
+  --write-kubeconfig-mode 600
+
+install -d -m 700 -o ec2-user -g ec2-user /home/ec2-user/.kube
+install -m 600 -o ec2-user -g ec2-user /etc/rancher/k3s/k3s.yaml /home/ec2-user/.kube/config
+echo "export KUBECONFIG=/home/ec2-user/.kube/config" >> /home/ec2-user/.bashrc
+
+echo "k3s server ready" > /var/log/k3s-ready.log

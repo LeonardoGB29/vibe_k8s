@@ -1,0 +1,12 @@
+#!/bin/bash
+set -euo pipefail
+exec > >(tee -a /var/log/vibe-bootstrap.log) 2>&1
+
+hostnamectl set-hostname ${hostname}
+systemctl enable --now amazon-ssm-agent
+export AWS_DEFAULT_REGION=${region}
+
+K3S_TOKEN=$(aws ssm get-parameter --name ${token_parameter} --with-decryption --query Parameter.Value --output text)
+
+curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="${k3s_version}" K3S_URL="https://${server_ip}:6443" K3S_TOKEN="$K3S_TOKEN" \
+  sh -s - agent --node-name ${hostname}
