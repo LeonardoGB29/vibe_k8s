@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Render overlays
         run: |
-          for env in kind aws; do
+          for env in test desarrollo; do
             kubectl kustomize k8s/overlays/$env > /tmp/$env.yaml
           done
       - name: Install kubeconform
@@ -29,7 +29,7 @@ jobs:
       - name: Validate schemas
         # KEDA y ServiceMonitor son CRDs sin esquema local
         run: |
-          for env in kind aws; do
+          for env in test desarrollo; do
             /tmp/kubeconform -strict -summary -ignore-missing-schemas /tmp/$env.yaml
           done
 
@@ -60,3 +60,48 @@ jobs:
           push: false
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  test-kind:
+    name: Despliegue test (kind)
+    needs: [manifests, dockerfiles]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: vibe
+          config: vibe/k8s/kind-ci-config.yaml
+      - name: Addons (ingress-nginx y KEDA)
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/kind/deploy.yaml
+          kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.21.0/keda-2.21.0.yaml
+          kubectl wait --for=condition=Established crd/scaledobjects.keda.sh --timeout=180s
+          kubectl -n keda rollout status deployment/keda-operator --timeout=180s
+          kubectl -n keda rollout status deployment/keda-admission --timeout=180s
+          kubectl -n ingress-nginx wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=180s
+      - name: Construir y cargar imagenes
+        run: |
+          for s in frontend catalog-api upload-api stream-api worker; do
+            docker build -t vibe-$s:dev vibe/services/$s
+          done
+          kind load docker-image vibe-frontend:dev vibe-catalog-api:dev vibe-upload-api:dev vibe-stream-api:dev vibe-worker:dev --name vibe
+      - name: Desplegar overlay test
+        run: |
+          kubectl apply -k vibe/k8s/overlays/test
+          kubectl -n vibe rollout status statefulset/postgres --timeout=180s
+          kubectl -n vibe rollout status statefulset/minio --timeout=180s
+          for d in frontend catalog-api upload-api stream-api worker; do
+            kubectl -n vibe rollout status deployment/$d --timeout=240s
+          done
+      - name: Smoke test
+        run: |
+          for path in / /api/stats /api/tracks; do
+            curl -fsS --retry 10 --retry-delay 3 --retry-connrefused -o /dev/null -w "$path -> %{http_code}\n" "http://localhost$path"
+          done
+      - name: Diagnostico si falla
+        if: failure()
+        run: |
+          kubectl -n vibe get pods -o wide
+          kubectl -n vibe describe pods | tail -n 150
+          kubectl -n vibe logs -l 'app in (catalog-api,upload-api,stream-api,worker)' --tail=50 --prefix || true
