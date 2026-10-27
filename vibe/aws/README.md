@@ -1,28 +1,46 @@
 # VIBE en AWS Academy Cloud Foundations Sandbox
 
-Preparación para el entorno confirmado: us-east-1, LabInstanceProfile/LabRole,
-clave vockey, hasta nueve EC2 encendidas y limpieza completa al finalizar la sesión.
-El bastión y el IDE del laboratorio son recursos externos a VIBE: conservarlos.
+El despliegue se hará en el sandbox de AWS Academy Cloud Foundations. El sandbox
+limita los recursos a `us-east-1`, limpia la cuenta al terminar cada sesión,
+permite hasta 9 EC2 concurrentes y provee `LabInstanceProfile`, `LabRole` y la
+clave `vockey`. IAM es de solo lectura: se reutilizan esos roles existentes.
+El clúster previsto usa cuatro EC2 (`t3.medium` + 3 `t3.small`). Usa volúmenes
+EBS gp2 de hasta 35 GB; Terraform configura 20 GB para el servidor y 15 GB para
+cada agente.
 
-## 1. Copiar la versión corregida a CloudShell
+Ejecuta Terraform y los comandos AWS desde el terminal de Lab IDE: sus
+credenciales CLI son temporales y no hace falta copiarlas a GitHub Secrets.
+Guarda state, outputs y evidencias fuera de AWS antes de que termine la sesión.
 
-Subir `vibe-aws.tar.gz` con Actions → Upload file. No clonar una revisión antigua
-del repositorio: este paquete incluye los cambios locales pendientes de publicar.
+## 1. Desplegar con Terraform desde Lab IDE
+
+Usa un checkout que incluya los cambios de la rama `integracion_terraform`. El
+terminal de Lab IDE ya tiene credenciales AWS temporales; no las pegues en Git ni
+en GitHub Actions.
 
 ```bash
-tar -xzf vibe-aws.tar.gz
-cd vibe_k8s/vibe
-aws cloudformation validate-template --region us-east-1 --template-body file://aws/cloudformation.yaml
-bash aws/setup.sh vockey
+cd vibe/terraform/bootstrap
+terraform init
+terraform apply
+terraform output state_bucket
+
+cd ../envs/desarrollo
+cp backend.hcl.example backend.hcl
+# Edita backend.hcl y coloca el state_bucket que acaba de mostrar Terraform.
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+terraform output
 ```
 
-setup.sh comprueba el perfil, la clave y una VPC predeterminada con tres subredes
-públicas. Si no existe esa red, se detiene antes de crear recursos; hay que elegir
-otra red y adaptar sus parámetros. La plantilla crea cuatro EC2 Amazon Linux 2023,
-un security group, Classic ELB y dos buckets S3. No instala la app todavía.
+Terraform crea cuatro EC2, un ELB y dos buckets S3. El estado S3 y el resto de los
+recursos desaparecen cuando el sandbox termina la sesión.
 
-Guardar los outputs ServerPublicIP, RawBucketName, HlsBucketName y LoadBalancerURL.
-CloudFormation puede terminar antes de que finalice cloud-init/k3s en las EC2.
+Obtén `ssm_session_command` y `cluster_init_command` de los outputs. Usa SSM para
+conectarte al servidor y ejecutar el comando de inicialización de la aplicación.
+
+La sección CloudFormation que sigue describe el despliegue heredado, no el flujo
+recomendado para esta rama.
 
 ## 2. Copiar el paquete al servidor
 

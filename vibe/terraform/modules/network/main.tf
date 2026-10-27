@@ -20,7 +20,7 @@ variable "node_port" {
   default     = 30080
 }
 
-# Red: se reutiliza la VPC predeterminada (el Academy no permite crear VPCs propias libremente).
+# Red: se reutiliza la VPC predeterminada disponible en el sandbox de AWS Academy.
 data "aws_vpc" "default" {
   default = true
 }
