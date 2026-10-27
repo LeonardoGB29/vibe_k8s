@@ -55,7 +55,13 @@ JOBS = Counter("vibe_worker_jobs_total", "Trabajos procesados", ["result"])
 JOB_TIME = Histogram("vibe_worker_job_seconds", "Duración de cada transcodificación")
 BUSY = Gauge("vibe_worker_busy", "1 si el worker está procesando")
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+engine = create_engine(
+    DATABASE_URL,
+    pool_size=int(os.getenv("DB_POOL_SIZE", "1")),
+    max_overflow=int(os.getenv("DB_MAX_OVERFLOW", "0")),
+    pool_timeout=float(os.getenv("DB_POOL_TIMEOUT", "5")),
+    pool_pre_ping=True,
+)
 r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
 _client_kwargs = {

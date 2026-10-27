@@ -1,0 +1,190 @@
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: vibe
+
+jobs:
+  manifests:
+    name: Kubernetes manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Render overlays
+        run: |
+          for env in test desarrollo; do
+            kubectl kustomize k8s/overlays/$env > /tmp/$env.yaml
+          done
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz | tar xz -C /tmp
+      - name: Validate schemas
+        # KEDA y ServiceMonitor son CRDs sin esquema local
+        run: |
+          for env in test desarrollo; do
+            /tmp/kubeconform -strict -summary -ignore-missing-schemas /tmp/$env.yaml
+          done
+
+  dockerfiles:
+    name: Dockerfiles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: hadolint
+        run: |
+          curl -fsSL -o /tmp/hadolint https://github.com/hadolint/hadolint/releases/download/v2.12.0/hadolint-Linux-x86_64
+          chmod +x /tmp/hadolint
+          /tmp/hadolint --failure-threshold error services/*/Dockerfile
+
+  build:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [frontend, catalog-api, upload-api, stream-api, worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/build-push-action@v6
+        with:
+          context: vibe/services/${{ matrix.service }}
+          push: false
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  test-kind:
+    name: Despliegue test (kind)
+    needs: [manifests, dockerfiles]
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: vibe
+          config: vibe/k8s/kind-ci-config.yaml
+      - name: Addons (ingress-nginx y KEDA)
+        run: |
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/kind/deploy.yaml
+          kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.21.0/keda-2.21.0.yaml
+          kubectl wait --for=condition=Established crd/scaledobjects.keda.sh --timeout=180s
+          kubectl -n keda rollout status deployment/keda-operator --timeout=180s
+          kubectl -n keda rollout status deployment/keda-admission --timeout=180s
+          kubectl -n ingress-nginx wait --for=condition=ready pod -l app.kubernetes.io/component=controller --timeout=180s
+      - name: Construir y cargar imagenes
+        run: |
+          for s in frontend catalog-api upload-api stream-api worker; do
+            docker build -t vibe-$s:dev services/$s
+          done
+          kind load docker-image vibe-frontend:dev vibe-catalog-api:dev vibe-upload-api:dev vibe-stream-api:dev vibe-worker:dev --name vibe
+      - name: Desplegar overlay test
+        run: |
+          kubectl apply -k k8s/overlays/test
+          kubectl -n vibe rollout status statefulset/postgres --timeout=180s
+          kubectl -n vibe rollout status statefulset/minio --timeout=180s
+          for d in frontend catalog-api upload-api stream-api worker; do
+            kubectl -n vibe rollout status deployment/$d --timeout=240s
+          done
+      - name: Smoke test
+        run: |
+          for path in / /api/stats /api/tracks; do
+            curl -fsS --retry 10 --retry-delay 3 --retry-connrefused -o /dev/null -w "$path -> %{http_code}\n" "http://localhost$path"
+          done
+      - name: Diagnostico si falla
+        if: failure()
+        run: |
+          kubectl -n vibe get pods -o wide
+          kubectl -n vibe describe pods | tail -n 150
+          kubectl -n vibe logs -l 'app in (catalog-api,upload-api,stream-api,worker)' --tail=50 --prefix || true
+
+  terraform:
+    name: Terraform (${{ matrix.dir }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [bootstrap, envs/desarrollo]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.6
+      - name: fmt
+        run: terraform fmt -check -recursive
+        working-directory: vibe/terraform
+      - name: init + validate
+        run: |
+          terraform init -backend=false -input=false -lockfile=readonly
+          terraform validate
+        working-directory: vibe/terraform/${{ matrix.dir }}
+
+  security:
+    name: IaC security scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.56.0
+      - name: TFLint
+        working-directory: vibe/terraform
+        run: |
+          tflint --init
+          tflint --recursive
+      - name: Checkov
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: vibe/terraform
+          framework: terraform
+          soft_fail: true
+      - name: Trivy configuration scan
+        uses: aquasecurity/trivy-action@v0.35.0
+        with:
+          scan-type: config
+          scan-ref: vibe
+          severity: CRITICAL,HIGH
+          exit-code: '1'
+
+  image-publish:
+    name: Publish ${{ matrix.service }} image
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integracion_terraform')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [frontend, catalog-api, upload-api, stream-api, worker]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - uses: docker/metadata-action@v5
+        id: meta
+        with:
+          images: ghcr.io/${{ github.repository }}-${{ matrix.service }}
+          tags: |
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+      - uses: docker/build-push-action@v6
+        with:
+          context: vibe/services/${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}

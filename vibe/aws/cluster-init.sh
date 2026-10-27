@@ -55,7 +55,7 @@ echo "=== [5/6] Configurando variables de entorno para AWS S3 ==="
 cd "$REPO_ROOT"
 
 # Crear namespace si no existe
-kubectl apply -f k8s/00-namespace.yaml
+kubectl apply -f k8s/base/00-namespace.yaml
 
 # Obtener credenciales temporales de la instancia (LabRole/LabInstanceProfile)
 # o usar token de sesión si fue provisto
@@ -75,6 +75,11 @@ else
 fi
 
 # Generar ConfigMap y Secret para S3
+if kubectl -n vibe get secret vibe-secrets >/dev/null 2>&1; then
+    POSTGRES_PASSWORD="$(kubectl -n vibe get secret vibe-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 --decode)"
+else
+    POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(openssl rand -hex 24)}"
+fi
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: ConfigMap
@@ -82,7 +87,6 @@ metadata:
   name: vibe-config
   namespace: vibe
 data:
-  DATABASE_URL: postgresql+psycopg://vibe:vibe@postgres:5432/vibe
   REDIS_URL: redis://redis:6379/0
   MINIO_ENDPOINT: s3.us-east-1.amazonaws.com
   MINIO_SECURE: "true"
@@ -101,31 +105,20 @@ metadata:
 type: Opaque
 stringData:
   POSTGRES_USER: vibe
-  POSTGRES_PASSWORD: vibe
+  POSTGRES_PASSWORD: "$POSTGRES_PASSWORD"
   POSTGRES_DB: vibe
+  DATABASE_URL: "postgresql+psycopg://vibe:${POSTGRES_PASSWORD}@postgres:5432/vibe"
   MINIO_ACCESS_KEY: "$AWS_AK"
   MINIO_SECRET_KEY: "$AWS_SK"
   MINIO_SESSION_TOKEN: "$AWS_ST"
 EOF
 
-echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios ==="
-kubectl apply -f k8s/20-postgres.yaml
-kubectl apply -f k8s/22-redis.yaml
+echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios (overlay desarrollo) ==="
+kubectl apply -k k8s/overlays/desarrollo
 
 echo "Esperando que Postgres y Redis esten listos..."
 kubectl rollout status statefulset/postgres -n vibe --timeout=120s
 kubectl rollout status deployment/redis -n vibe --timeout=60s
-
-kubectl apply -f k8s/30-frontend.yaml
-kubectl apply -f k8s/31-catalog-api.yaml
-kubectl apply -f k8s/32-upload-api.yaml
-kubectl apply -f k8s/33-stream-api.yaml
-kubectl apply -f k8s/34-worker.yaml
-kubectl apply -f "$SCRIPT_DIR/ingress.yaml"
-kubectl apply -f k8s/50-hpa.yaml
-kubectl apply -f k8s/51-keda-worker.yaml
-kubectl -n vibe patch scaledobject worker --type=merge -p '{"spec":{"maxReplicaCount":8}}'
-kubectl apply -f k8s/60-pdb.yaml
 
 echo "Esperando que todos los microservicios inicien..."
 kubectl rollout status deployment/frontend -n vibe --timeout=120s
