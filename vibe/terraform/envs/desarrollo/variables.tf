@@ -45,8 +45,9 @@ variable "agent_count" {
 }
 
 variable "instance_profile" {
-  type    = string
-  default = "LabInstanceProfile"
+  description = "Perfil EC2 precreado por AWS Academy (LabInstanceProfile)"
+  type        = string
+  default     = "LabInstanceProfile"
 }
 
 variable "key_name" {
