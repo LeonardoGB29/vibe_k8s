@@ -34,6 +34,12 @@ spec:
             - configMapRef:
                 name: vibe-config
           env:
+            - name: DATABASE_URL
+              valueFrom: { secretKeyRef: { name: vibe-secrets, key: DATABASE_URL } }
+            - name: DB_POOL_SIZE
+              value: "1"
+            - name: DB_MAX_OVERFLOW
+              value: "0"
             - name: MINIO_ACCESS_KEY
               valueFrom: { secretKeyRef: { name: vibe-secrets, key: MINIO_ACCESS_KEY } }
             - name: MINIO_SECRET_KEY
