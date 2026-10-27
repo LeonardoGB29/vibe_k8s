@@ -1,0 +1,51 @@
+name: terraform
+
+# Manual: AWS Academy entrega credenciales temporales que hay que pegar en los secretos
+# del Environment `desarrollo` cada vez que se reinicia el lab.
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Accion
+        type: choice
+        options: [plan, apply, destroy]
+        default: plan
+
+permissions:
+  contents: read
+
+concurrency:
+  group: terraform-desarrollo
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: desarrollo
+    env:
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
+      AWS_DEFAULT_REGION: us-east-1
+    defaults:
+      run:
+        working-directory: vibe/terraform/envs/desarrollo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.6
+      - name: init
+        run: terraform init -input=false -lockfile=readonly -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+      - name: plan
+        if: inputs.action != 'destroy'
+        run: terraform plan -input=false -out=tfplan
+      - name: apply
+        if: inputs.action == 'apply'
+        run: terraform apply -input=false tfplan
+      - name: destroy
+        if: inputs.action == 'destroy'
+        run: terraform destroy -input=false -auto-approve
+      - name: outputs
+        if: inputs.action == 'apply'
+        run: terraform output

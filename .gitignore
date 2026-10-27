@@ -14,3 +14,11 @@ vibe/data/audio/*.wav
 *.pem
 *.ppk
 *.key
+
+# Terraform (el .terraform.lock.hcl SI se versiona)
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.auto.tfvars
+backend.hcl
