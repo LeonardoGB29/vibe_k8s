@@ -75,6 +75,11 @@ else
 fi
 
 # Generar ConfigMap y Secret para S3
+if kubectl -n vibe get secret vibe-secrets >/dev/null 2>&1; then
+    POSTGRES_PASSWORD="$(kubectl -n vibe get secret vibe-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 --decode)"
+else
+    POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(openssl rand -hex 24)}"
+fi
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: ConfigMap
@@ -82,7 +87,6 @@ metadata:
   name: vibe-config
   namespace: vibe
 data:
-  DATABASE_URL: postgresql+psycopg://vibe:vibe@postgres:5432/vibe
   REDIS_URL: redis://redis:6379/0
   MINIO_ENDPOINT: s3.us-east-1.amazonaws.com
   MINIO_SECURE: "true"
@@ -101,8 +105,9 @@ metadata:
 type: Opaque
 stringData:
   POSTGRES_USER: vibe
-  POSTGRES_PASSWORD: vibe
+  POSTGRES_PASSWORD: "$POSTGRES_PASSWORD"
   POSTGRES_DB: vibe
+  DATABASE_URL: "postgresql+psycopg://vibe:${POSTGRES_PASSWORD}@postgres:5432/vibe"
   MINIO_ACCESS_KEY: "$AWS_AK"
   MINIO_SECRET_KEY: "$AWS_SK"
   MINIO_SESSION_TOKEN: "$AWS_ST"

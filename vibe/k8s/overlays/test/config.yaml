@@ -24,5 +24,6 @@ stringData:
   POSTGRES_USER: vibe
   POSTGRES_PASSWORD: vibe
   POSTGRES_DB: vibe
+  DATABASE_URL: postgresql+psycopg://vibe:vibe@postgres:5432/vibe
   MINIO_ACCESS_KEY: vibeadmin
   MINIO_SECRET_KEY: vibesecret123

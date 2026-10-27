@@ -33,13 +33,18 @@ terraform output ssm_session_command
 
 - **State:** S3 con versionado, cifrado, bloqueo (`use_lockfile`) y solo TLS. Un state por entorno (`desarrollo/terraform.tfstate`).
 - **Minimo privilegio:** unico puerto publico el 80 del ELB; los nodos solo reciben el NodePort desde el ELB y trafico interno; sin SSH (SSM). El token de k3s sale de `random_id` y se guarda en SSM SecureString, no en el user-data ni en Git. IMDSv2 obligatorio, discos cifrados.
-  En AWS Academy no se pueden crear roles IAM, asi que se reutiliza `LabInstanceProfile`.
+  Se reutiliza `LabInstanceProfile`/`LabRole`, precreados por el sandbox; IAM es de solo lectura y no se pueden crear roles propios. Las credenciales del CLI se obtienen en Lab IDE y caducan al cerrar la sesión.
 - **Reproducibilidad:** versiones fijas de k3s, de providers (`~>`) y de Terraform (`>= 1.10`), `.terraform.lock.hcl` versionado, AMI ignorada tras la creacion (`ignore_changes`) para que un plan posterior no recree nodos.
 - **Idempotencia:** `terraform plan` sin cambios debe salir vacio. KEDA y la aplicacion no estan en Terraform: las aplica `aws/cluster-init.sh` (`kubectl apply -k k8s/overlays/desarrollo`).
 
-## Secretos de GitHub (Environment `desarrollo`)
+## GitHub Actions y credenciales
 
 | Tipo | Nombre | Valor |
 |---|---|---|
-| Secret | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | credenciales del Learner Lab (caducan) |
-| Variable | `TF_STATE_BUCKET` | output `state_bucket` del bootstrap |
+| Secret | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | Credenciales temporales del sandbox; renovarlas cada sesión solo si se ejecutan los workflows `terraform` o `deploy` |
+| Variable | `TF_STATE_BUCKET` | Output `state_bucket` del bootstrap |
+
+Los workflows `ci` y `image-publish` no requieren credenciales AWS. También puedes
+ejecutar Terraform directamente desde Lab IDE y reservar Actions para CI. El
+sandbox elimina los recursos al finalizar la sesión; guarda outputs y evidencias
+fuera de AWS antes de que expire.

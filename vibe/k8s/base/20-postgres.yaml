@@ -36,6 +36,12 @@ spec:
           env:
             - name: PGDATA
               value: /var/lib/postgresql/data/pgdata
+            - name: POSTGRES_USER
+              valueFrom: { secretKeyRef: { name: vibe-secrets, key: POSTGRES_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: vibe-secrets, key: POSTGRES_PASSWORD } }
+            - name: POSTGRES_DB
+              valueFrom: { secretKeyRef: { name: vibe-secrets, key: POSTGRES_DB } }
           envFrom:
             - secretRef:
                 name: vibe-secrets

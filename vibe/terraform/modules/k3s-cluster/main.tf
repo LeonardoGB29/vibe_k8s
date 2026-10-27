@@ -62,7 +62,7 @@ variable "agent_count" {
 }
 
 variable "instance_profile" {
-  description = "Perfil de instancia existente (en AWS Academy no se pueden crear roles IAM)"
+  description = "Perfil EC2 precreado por AWS Academy (LabInstanceProfile); el sandbox no permite crear roles IAM"
   type        = string
   default     = "LabInstanceProfile"
 }
@@ -130,7 +130,7 @@ resource "aws_instance" "server" {
 
   root_block_device {
     volume_size = 20
-    volume_type = "gp3"
+    volume_type = "gp2"
     encrypted   = true
   }
 
@@ -173,7 +173,7 @@ resource "aws_instance" "agent" {
 
   root_block_device {
     volume_size = 15
-    volume_type = "gp3"
+    volume_type = "gp2"
     encrypted   = true
   }
 

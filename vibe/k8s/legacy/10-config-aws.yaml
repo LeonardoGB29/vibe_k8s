@@ -4,7 +4,6 @@ metadata:
   name: vibe-config
   namespace: vibe
 data:
-  DATABASE_URL: postgresql+psycopg://vibe:vibe@postgres:5432/vibe
   REDIS_URL: redis://redis:6379/0
   MINIO_ENDPOINT: s3.us-east-1.amazonaws.com
   MINIO_SECURE: "true"
@@ -23,7 +22,6 @@ metadata:
 type: Opaque
 stringData:
   POSTGRES_USER: vibe
-  POSTGRES_PASSWORD: vibe
   POSTGRES_DB: vibe
   # Completar con credenciales temporales del AWS Academy Sandbox si no se usa IAM Role
   MINIO_ACCESS_KEY: ""

@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /vibe/services/catalog-api
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /vibe/services/upload-api
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /vibe/services/stream-api
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /vibe/services/worker
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /vibe/services/frontend
+    schedule:
+      interval: weekly
