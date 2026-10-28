@@ -7,6 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIBE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$VIBE_DIR/.." && pwd)"
 ENV_DIR="$VIBE_DIR/terraform/envs/desarrollo"
+BOOTSTRAP_DIR="$VIBE_DIR/terraform/bootstrap"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vibe-deploy.XXXXXX")"
 ARCHIVE="$WORK_DIR/vibe-aws.tar.gz"
 TF_PLAN="$WORK_DIR/terraform.tfplan"
@@ -22,6 +23,30 @@ require_free_space() {
   echo "Espacio libre en $label ($path): ${available_mib} MiB"
   [[ "$available_mib" =~ ^[0-9]+$ ]] || die "No pude medir el espacio libre en $path."
   (( available_mib >= minimum_mib )) || die "Espacio insuficiente en $label: hay ${available_mib} MiB y se requieren al menos ${minimum_mib} MiB. Libera espacio y vuelve a ejecutar."
+}
+
+free_local_space() {
+  local before_mib after_mib plugin_cache
+  before_mib="$(df -Pm "$ENV_DIR" | awk 'NR == 2 {print $4}')"
+  echo "Espacio libre antes de limpiar CloudShell: ${before_mib} MiB"
+
+  # Estas carpetas solo contienen archivos regenerables de Terraform.
+  rm -rf "$ENV_DIR/.terraform" "$BOOTSTRAP_DIR/.terraform"
+  plugin_cache="${HOME}/.terraform.d/plugin-cache"
+  if [[ -d "$plugin_cache" && ! -L "$plugin_cache" ]]; then
+    rm -rf "$plugin_cache"
+  fi
+
+  # Limpiar cachés de paquetes que se pueden volver a descargar si hacen falta.
+  if command -v python3 >/dev/null 2>&1; then
+    python3 -m pip cache purge >/dev/null 2>&1 || true
+  fi
+  if [[ -d "$HOME/.npm/_cacache" ]]; then
+    rm -rf "$HOME/.npm/_cacache"
+  fi
+
+  after_mib="$(df -Pm "$ENV_DIR" | awk 'NR == 2 {print $4}')"
+  echo "Espacio libre después de limpiar CloudShell: ${after_mib} MiB (se liberaron $((after_mib - before_mib)) MiB)"
 }
 
 ensure_s3_bucket() {
@@ -71,10 +96,8 @@ read -r -p "Escribe desplegar para continuar: " CONFIRM
 [[ "$CONFIRM" == "desplegar" ]] || die "Despliegue cancelado."
 
 echo "=== Revisando espacio local antes de Terraform ==="
+free_local_space
 require_free_space "$ENV_DIR" "${VIBE_MIN_LOCAL_MIB:-700}" "CloudShell"
-# .terraform es una caché regenerable; eliminarla evita que providers viejos
-# consuman el escaso disco persistente de CloudShell en reintentos.
-rm -rf "$ENV_DIR/.terraform"
 
 echo "=== 1/6 Creando/configurando los buckets con AWS CLI ==="
 STATE_BUCKET="vibe-tfstate-${ACCOUNT_ID}"
@@ -88,9 +111,11 @@ echo "=== 2/6 Creando la infraestructura ==="
 cd "$ENV_DIR"
 printf 'bucket = "%s"\n' "$STATE_BUCKET" > backend.hcl
 terraform init -backend-config=backend.hcl -lockfile=readonly
-require_free_space "$ENV_DIR" "${VIBE_MIN_AFTER_INIT_MIB:-250}" "CloudShell después de instalar providers Terraform"
+# Terraform conserva los providers durante plan/apply. El margen de 100 MiB
+# permite continuar en CloudShell aun cuando los providers ocupan casi todo el disco.
+require_free_space "$ENV_DIR" "${VIBE_MIN_AFTER_INIT_MIB:-100}" "CloudShell después de instalar providers Terraform"
 terraform plan -out="$TF_PLAN"
-require_free_space "$ENV_DIR" "${VIBE_MIN_AFTER_PLAN_MIB:-150}" "CloudShell después de crear el plan Terraform"
+require_free_space "$ENV_DIR" "${VIBE_MIN_AFTER_PLAN_MIB:-50}" "CloudShell después de crear el plan Terraform"
 terraform apply -auto-approve "$TF_PLAN"
 
 SERVER_ID="$(terraform output -raw server_instance_id)"
