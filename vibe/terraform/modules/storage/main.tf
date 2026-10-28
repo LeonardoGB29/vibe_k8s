@@ -50,6 +50,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "audio" {
 
   rule {
     apply_server_side_encryption_by_default {
+      # SSE-S3 evita depender de permisos KMS que AWS Academy no concede.
       sse_algorithm = "AES256"
     }
   }

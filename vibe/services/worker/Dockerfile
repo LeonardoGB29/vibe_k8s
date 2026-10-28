@@ -7,9 +7,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
 
 WORKDIR /srv
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt \
+    && useradd --system --uid 10001 --create-home appuser
 
-COPY worker.py .
+COPY --chown=appuser:appuser worker.py .
+USER 10001:10001
 
 EXPOSE 9100
 CMD ["python", "worker.py"]
