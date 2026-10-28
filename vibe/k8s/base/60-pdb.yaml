@@ -5,6 +5,7 @@ metadata:
   namespace: vibe
 spec:
   minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app: frontend
@@ -16,6 +17,7 @@ metadata:
   namespace: vibe
 spec:
   minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app: catalog-api
@@ -27,6 +29,7 @@ metadata:
   namespace: vibe
 spec:
   minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app: upload-api
@@ -38,6 +41,7 @@ metadata:
   namespace: vibe
 spec:
   minAvailable: 1
+  unhealthyPodEvictionPolicy: AlwaysAllow
   selector:
     matchLabels:
       app: stream-api

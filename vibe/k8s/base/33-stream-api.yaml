@@ -54,6 +54,12 @@ spec:
                   matchLabels:
                     app: stream-api
                 topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: stream-api
           image: vibe-stream-api:dev
