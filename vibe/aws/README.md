@@ -8,33 +8,24 @@ El clúster previsto usa cuatro EC2 (`t3.medium` + 3 `t3.small`). Usa volúmenes
 EBS gp2 de hasta 35 GB; Terraform configura 20 GB para el servidor y 15 GB para
 cada agente.
 
-Ejecuta Terraform y los comandos AWS desde el terminal de Lab IDE: sus
-credenciales CLI son temporales y no hace falta copiarlas a GitHub Secrets.
-Guarda state, outputs y evidencias fuera de AWS antes de que termine la sesión.
+Ejecuta el despliegue desde una terminal AWS Academy con credenciales CLI
+temporales. No hace falta copiarlas a GitHub Secrets. Guarda outputs y evidencias
+fuera de AWS antes de que termine la sesión.
 
 ## 1. Desplegar con Terraform desde Lab IDE
 
-Usa un checkout que incluya los cambios de la rama `integracion_terraform`. El
-terminal de Lab IDE ya tiene credenciales AWS temporales; no las pegues en Git ni
-en GitHub Actions.
+Usa un checkout actualizado con los cambios de esta guía. El script instala la
+infraestructura y la aplicación en una sola ejecución; solicita escribir
+`desplegar` antes de crear recursos.
 
 ```bash
-cd vibe/terraform/bootstrap
-terraform init
-terraform apply
-terraform output state_bucket
-
-cd ../envs/desarrollo
-cp backend.hcl.example backend.hcl
-# Edita backend.hcl y coloca el state_bucket que acaba de mostrar Terraform.
-terraform init -backend-config=backend.hcl
-terraform plan
-terraform apply
-terraform output
+bash aws/deploy-sandbox.sh
 ```
 
-Terraform crea cuatro EC2, un ELB y dos buckets S3. El estado S3 y el resto de los
-recursos desaparecen cuando el sandbox termina la sesión.
+El script crea/configura tres buckets con AWS CLI y usa Terraform para crear
+cuatro EC2, un ELB y los demás recursos. Este flujo evita la lectura de S3 Object
+Lock denegada al proveedor Terraform por la política del rol `voclabs`. El state
+S3 y el resto de los recursos desaparecen cuando el sandbox termina la sesión.
 
 Obtén `ssm_session_command` y `cluster_init_command` de los outputs. Usa SSM para
 conectarte al servidor y ejecutar el comando de inicialización de la aplicación.
@@ -51,11 +42,12 @@ El Terraform vigente exige IMDSv2 y cifra los discos. El ELB HTTP público es
 intencional para la demo, SSE-S3 se mantiene porque el sandbox no da permisos
 KMS suficientes, y el egress global temporal se necesita para paquetes,
 imágenes y componentes del clúster sin endpoints privados disponibles.
-Trivy conserva esos tres hallazgos como excepciones locales a los recursos
-afectados (`AWS-0132` en los buckets, `AWS-0053` en el ELB y `AWS-0104` en el
-egress), cada una con vencimiento el 27 de abril de 2027. El gate sigue fallando
-ante otros hallazgos `HIGH` o `CRITICAL`; al vencer, las excepciones vuelven a
-requerir revisión.
+El script configura los buckets con bloqueo de acceso público, SSE-S3 y una
+política TLS; Trivy no inspecciona estas llamadas AWS CLI. Las excepciones IaC
+temporales restantes son `AWS-0053` en el ELB y `AWS-0104` en el egress, ambas
+con vencimiento el 27 de abril de 2027. El gate sigue fallando ante otros
+hallazgos `HIGH` o `CRITICAL`; al vencer, las excepciones vuelven a requerir
+revisión.
 
 ## 2. Copiar el paquete al servidor
 
