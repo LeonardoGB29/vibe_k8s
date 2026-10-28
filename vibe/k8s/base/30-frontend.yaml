@@ -10,7 +10,7 @@ spec:
     app: frontend
   ports:
     - port: 80
-      targetPort: 80
+      targetPort: http
       name: http
 ---
 apiVersion: apps/v1
