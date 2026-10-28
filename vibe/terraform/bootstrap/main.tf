@@ -49,6 +49,9 @@ resource "aws_s3_bucket_versioning" "state" {
   }
 }
 
+# AWS Academy no permite usar una clave KMS administrada por el cliente; SSE-S3
+# sigue habilitado. Revisar esta excepción al salir del sandbox.
+#trivy:ignore:AVD-AWS-0132:exp:2027-04-27
 resource "aws_s3_bucket_server_side_encryption_configuration" "state" {
   bucket = aws_s3_bucket.state.id
 

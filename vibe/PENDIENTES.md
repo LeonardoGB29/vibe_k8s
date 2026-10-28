@@ -34,7 +34,7 @@ la sesión.
 - [x] Imágenes de los cinco microservicios ejecutan como usuario sin privilegios (`DS-0002`); archivos de la app son legibles y temporales del worker/upload van en `/tmp`.
 - [x] Añadido `runAsNonRoot`, UID/GID no privilegiado y seccomp RuntimeDefault en los cinco workloads de aplicación. `readOnlyRootFilesystem` queda pendiente hasta validarlo en despliegue.
 - [x] CloudFormation marcado como legado no soportado y fuera del escaneo activo; Terraform vigente exige IMDSv2 y cifra EBS.
-- [ ] Volver a ejecutar Trivy/Checkov y comprobar que el reporte conserva hallazgos, las excepciones están justificadas y el gate funciona según lo esperado.
+- [ ] Volver a ejecutar Trivy/Checkov en GitHub y comprobar que las excepciones locales con vencimiento se aplican, los hallazgos quedan visibles en el reporte y otros `HIGH`/`CRITICAL` siguen bloqueando el gate.
 
 ### Terraform
 - [ ] Crear en GitHub el Environment `desarrollo`, configurar `TF_STATE_BUCKET` y actualizar `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN` en cada sesión.
