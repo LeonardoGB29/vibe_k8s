@@ -21,6 +21,10 @@ variable "node_port" {
 }
 
 # Red: se reutiliza la VPC predeterminada disponible en el sandbox de AWS Academy.
+# La salida global se conserva temporalmente para descargar paquetes del sistema,
+# imágenes de contenedor y releases de k3s/KEDA/Helm: el sandbox no permite crear
+# endpoints privados ni reglas de egress por servicio. No hay puertos de entrada
+# abiertos en los nodos; el balanceador solo llega al NodePort configurado.
 data "aws_vpc" "default" {
   default = true
 }
@@ -111,6 +115,9 @@ resource "aws_vpc_security_group_ingress_rule" "nodes_self" {
   referenced_security_group_id = aws_security_group.nodes.id
 }
 
+# Excepción temporal AWS-0104: los nodos necesitan descargar imágenes y
+# componentes del clúster; el sandbox no permite crear endpoints privados.
+#trivy:ignore:AVD-AWS-0104:exp:2027-04-27
 resource "aws_vpc_security_group_egress_rule" "nodes_all" {
   security_group_id = aws_security_group.nodes.id
   description       = "Salida a Internet (imagenes, k3s, S3, SSM)"
