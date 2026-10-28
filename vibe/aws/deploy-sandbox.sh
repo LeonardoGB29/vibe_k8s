@@ -143,6 +143,19 @@ done
 
 echo "=== 5/6 Instalando K3s y desplegando VIBE ==="
 REMOTE_SCRIPT="set -eu
+echo 'Esperando que cloud-init termine de configurar k3s-server...'
+if command -v cloud-init >/dev/null 2>&1; then
+  if ! cloud-init status --wait; then
+    echo 'ERROR: cloud-init terminó con errores; revisa /var/log/cloud-init-output.log' >&2
+    tail -n 80 /var/log/cloud-init-output.log >&2 || true
+    exit 1
+  fi
+fi
+if ! command -v docker >/dev/null 2>&1 || ! systemctl is-active --quiet docker; then
+  echo 'ERROR: Docker no quedó instalado/activo después de cloud-init.' >&2
+  tail -n 80 /var/log/cloud-init-output.log >&2 || true
+  exit 1
+fi
 docker system prune -af
 FREE_MIB=\$(df -Pm / | awk 'NR == 2 {print \$4}')
 echo \"Espacio libre en k3s-server: \${FREE_MIB} MiB\"

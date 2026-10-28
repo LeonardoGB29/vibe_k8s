@@ -1,4 +1,4 @@
-# Pendientes · integración Terraform + CI
+﻿# Pendientes · integración Terraform + CI
 
 ## Para revisar
 
@@ -7,14 +7,16 @@
 - [x] `test-kind`: overlay `ci` con una réplica por microservicio, usado por el workflow para reducir consumo del runner.
 - [x] `kubectl kustomize k8s/overlays/test` y `.../desarrollo` renderizan localmente; `desarrollo` conserva `maxReplicaCount: 8`.
 - [ ] Cambio de orden en el despliegue: las APIs ya no esperan a Postgres/MinIO antes de crearse. Pendiente comprobar reinicios con un despliegue real; las APIs reintentan conexión a Postgres al iniciar.
-- [ ] Versión de k3s (`v1.31.4+k3s1`): confirmar que existe, o cambiarla con `-var k3s_version=...`.
+- [x] Versión de k3s (`v1.31.4+k3s1`): confirmada en el despliegue real del clúster.
 - [x] Confirmado sandbox AWS Academy disponible: región `us-east-1`, `LabInstanceProfile`/`LabRole` y `vockey` precreados, máximo de 9 EC2.
-- [ ] Revisar cuota/costo del sandbox y confirmar que hay espacio para cuatro EC2 (20 GB y 15 GB gp2, dentro de los límites publicados).
+- [x] Confirmar capacidad del sandbox para desplegar cuatro EC2 con discos de 20 GB y 15 GB: el despliegue real terminó correctamente.
+- [ ] Revisar el costo/cuota consumida durante la sesión del sandbox.
 - [ ] `terraform plan` sin cambios tras el primer `apply` (idempotencia).
 
-Estado de ejecución: el PR #1 ya está integrado en `main`. El despliegue usa
-credenciales temporales del Lab IDE; el sandbox borra recursos y estado al acabar
-la sesión.
+Estado de ejecución: el PR #1 ya está integrado en `main`. VIBE se desplegó desde
+`aws/deploy-sandbox.sh`; los pods quedaron listos y `/`, `/api/stats` y
+`/api/tracks` respondieron HTTP 200 en el ELB. El despliegue usa credenciales
+temporales del Lab IDE; el sandbox borra recursos y estado al acabar la sesión.
 
 ## Por hacer
 
@@ -40,8 +42,9 @@ la sesión.
 - [ ] Crear en GitHub el Environment `desarrollo`, configurar `TF_STATE_BUCKET` y actualizar `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` y `AWS_SESSION_TOKEN` en cada sesión.
 - [ ] Ejecutar `terraform/bootstrap` desde Lab IDE y anotar el bucket de state. Repetir en cada sesión porque el sandbox elimina también el estado remoto.
 - [ ] En Actions, ejecutar `terraform.yml` con `action=plan`, revisar el plan y luego lanzar `action=apply` en una ejecución separada.
-- [ ] Entrar al servidor con SSM y ejecutar `cluster-init.sh` usando `LabInstanceProfile`.
-- [ ] Verificar la app por la URL del ELB y borrar el stack viejo de CloudFormation si ya no se necesita.
+- [x] Entrar al servidor mediante SSM y ejecutar `cluster-init.sh` usando `LabInstanceProfile`.
+- [x] Verificar la app por la URL del ELB: `/`, `/api/stats` y `/api/tracks` respondieron HTTP 200.
+- [ ] Borrar el stack viejo de CloudFormation si todavía existe y ya no se necesita.
 - [ ] Probar `deploy.yml` con el SHA de una imagen publicada en GHCR; comprobar permisos SSM y visibilidad del paquete para EC2.
 - [ ] Ejecutar `action=destroy` al terminar la práctica si se requiere borrado controlado antes de que venza la sesión.
 
