@@ -48,8 +48,20 @@ kubectl -n keda rollout status deployment/keda-metrics-apiserver --timeout=180s
 kubectl -n keda rollout status deployment/keda-admission --timeout=180s
 
 echo "=== [4/6] Construyendo imágenes de microservicios y distribuyendo a los nodos ==="
+# Limpiar caché Docker anterior; las imágenes de producción se ejecutan en
+# containerd de k3s, así que Docker puede liberar capas de builds anteriores.
+docker system prune -af
+# Docker y las imágenes se guardan en el disco raíz del servidor. Revisa antes
+# de empezar para fallar con un mensaje claro y evitar dejar una carga a medias.
+SERVER_FREE_MIB="$(df -Pm / | awk 'NR == 2 {print $4}')"
+echo "Espacio libre en k3s-server antes de construir: ${SERVER_FREE_MIB} MiB"
+if (( SERVER_FREE_MIB < ${VIBE_MIN_SERVER_MIB:-6000} )); then
+    echo "Espacio insuficiente en k3s-server: se requieren al menos ${VIBE_MIN_SERVER_MIB:-6000} MiB libres para construir las imágenes." >&2
+    exit 1
+fi
 chmod +x "$SCRIPT_DIR/build-and-load.sh"
 "$SCRIPT_DIR/build-and-load.sh"
+docker system prune -af
 
 echo "=== [5/6] Configurando variables de entorno para AWS S3 ==="
 cd "$REPO_ROOT"
@@ -131,5 +143,7 @@ echo "=========================================================="
 echo " 🎉 VIBE Microservicios desplegados exitosamente en AWS!"
 echo "=========================================================="
 kubectl get pods -n vibe -o wide
+echo ""
+kubectl get services -n vibe -o wide
 echo ""
 kubectl get ingress -n vibe
