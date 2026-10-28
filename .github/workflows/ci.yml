@@ -88,7 +88,7 @@ jobs:
           kind load docker-image vibe-frontend:dev vibe-catalog-api:dev vibe-upload-api:dev vibe-stream-api:dev vibe-worker:dev --name vibe
       - name: Desplegar overlay test
         run: |
-          kubectl apply -k k8s/overlays/test
+          kubectl apply -k k8s/overlays/ci
           kubectl -n vibe rollout status statefulset/postgres --timeout=180s
           kubectl -n vibe rollout status statefulset/minio --timeout=180s
           for d in frontend catalog-api upload-api stream-api worker; do
@@ -147,10 +147,13 @@ jobs:
           framework: terraform
           soft_fail: true
       - name: Trivy configuration scan
-        uses: aquasecurity/trivy-action@v0.35.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
-          scan-ref: vibe
+          # Terraform es la infraestructura activa. CloudFormation y k8s/legacy
+          # quedan documentados como históricos y no forman parte de este gate.
+          scan-ref: vibe/terraform
+          version: v0.76.1
           severity: CRITICAL,HIGH
           exit-code: '1'
 
