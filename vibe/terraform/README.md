@@ -1,33 +1,26 @@
 # Terraform · VIBE
 
 ```
-bootstrap/            bucket S3 del state (una sola vez, state local)
+bootstrap/            nombre del bucket S3 del state
 modules/network/      VPC predeterminada, subredes, security groups (sin SSH ni 6443 publicos)
-modules/storage/      buckets S3 raw y hls (cifrados, sin acceso publico, solo TLS)
+modules/storage/      nombres de buckets S3 raw y hls
 modules/k3s-cluster/  servidor k3s + agentes (for_each), token en SSM, Traefik, ELB
 envs/desarrollo/      composicion del entorno desarrollo en AWS
 ```
 
 `test` no usa Terraform: es un cluster kind (`make up`, o el job `test-kind` del CI).
 
-## Primer uso
+## Despliegue en AWS Academy
 
 ```bash
-# 1. Bucket del state (una vez por cuenta)
-cd terraform/bootstrap
-terraform init && terraform apply          # anota el output state_bucket
-
-# 2. Entorno desarrollo
-cd ../envs/desarrollo
-cp backend.hcl.example backend.hcl         # pon el bucket
-terraform init -backend-config=backend.hcl -lockfile=readonly
-terraform plan
-terraform apply
-
-# 3. Acceso (sin SSH): Session Manager
-terraform output ssm_session_command
-# dentro del servidor: clonar/subir el repo y ejecutar `terraform output cluster_init_command`
+cd aws
+bash deploy-sandbox.sh
 ```
+
+El script crea/configura los buckets con AWS CLI y usa Terraform para el resto
+de la infraestructura. AWS Academy deniega `s3:GetBucketObjectLockConfiguration`,
+que el proveedor AWS de Terraform requiere al leer un recurso `aws_s3_bucket`;
+por eso el state y los buckets de audio no se administran como recursos Terraform.
 
 ## Decisiones
 
@@ -42,7 +35,7 @@ terraform output ssm_session_command
 | Tipo | Nombre | Valor |
 |---|---|---|
 | Secret | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | Credenciales temporales del sandbox; renovarlas cada sesión solo si se ejecutan los workflows `terraform` o `deploy` |
-| Variable | `TF_STATE_BUCKET` | Output `state_bucket` del bootstrap |
+| Variable | `TF_STATE_BUCKET` | `vibe-tfstate-<ACCOUNT_ID>` |
 
 Los workflows `ci` y `image-publish` no requieren credenciales AWS. También puedes
 ejecutar Terraform directamente desde Lab IDE y reservar Actions para CI. El
