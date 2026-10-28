@@ -42,6 +42,21 @@ conectarte al servidor y ejecutar el comando de inicialización de la aplicació
 La sección CloudFormation que sigue describe el despliegue heredado, no el flujo
 recomendado para esta rama.
 
+El CI y el escaneo IaC consideran activos Terraform y los overlays actuales de
+`k8s/`; `cloudformation.yaml` y `k8s/legacy/` se conservan como referencia
+histórica, pero no se despliegan ni forman parte del gate activo. El stack
+CloudFormation antiguo permite SSH, NodePort y API de Kubernetes desde Internet,
+no exige IMDSv2 ni cifra explícitamente EBS; no debe usarse en una cuenta real.
+El Terraform vigente exige IMDSv2 y cifra los discos. El ELB HTTP público es
+intencional para la demo, SSE-S3 se mantiene porque el sandbox no da permisos
+KMS suficientes, y el egress global temporal se necesita para paquetes,
+imágenes y componentes del clúster sin endpoints privados disponibles.
+Trivy conserva esos tres hallazgos como excepciones locales a los recursos
+afectados (`AWS-0132` en los buckets, `AWS-0053` en el ELB y `AWS-0104` en el
+egress), cada una con vencimiento el 27 de abril de 2027. El gate sigue fallando
+ante otros hallazgos `HIGH` o `CRITICAL`; al vencer, las excepciones vuelven a
+requerir revisión.
+
 ## 2. Copiar el paquete al servidor
 
 ### Desde S3 y Session Manager (ruta recomendada con el clúster creado)
