@@ -21,6 +21,10 @@ variable "node_port" {
 }
 
 # Red: se reutiliza la VPC predeterminada disponible en el sandbox de AWS Academy.
+# La salida global se conserva temporalmente para descargar paquetes del sistema,
+# imágenes de contenedor y releases de k3s/KEDA/Helm: el sandbox no permite crear
+# endpoints privados ni reglas de egress por servicio. No hay puertos de entrada
+# abiertos en los nodos; el balanceador solo llega al NodePort configurado.
 data "aws_vpc" "default" {
   default = true
 }
