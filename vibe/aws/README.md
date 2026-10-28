@@ -24,11 +24,12 @@ bash aws/deploy-sandbox.sh
 
 El script crea/configura tres buckets con AWS CLI y usa Terraform para crear
 cuatro EC2, un ELB y los demás recursos. Este flujo evita la lectura de S3 Object
-Lock denegada al proveedor Terraform por la política del rol `voclabs`. El state
-S3 y el resto de los recursos desaparecen cuando el sandbox termina la sesión.
-
-Obtén `ssm_session_command` y `cluster_init_command` de los outputs. Usa SSM para
-conectarte al servidor y ejecutar el comando de inicialización de la aplicación.
+Lock denegada al proveedor Terraform por la política del rol `voclabs`. Antes de
+continuar revisa el espacio disponible en CloudShell, el servidor y cada agente;
+limpia la caché Docker antigua y se detiene con un mensaje claro si falta espacio.
+Al terminar muestra el estado de pods, servicios e ingress, comprueba `/`,
+`/api/stats` y `/api/tracks`, y deja la URL pública al final. El state S3 y el
+resto de los recursos desaparecen cuando el sandbox termina la sesión.
 
 La sección CloudFormation que sigue describe el despliegue heredado, no el flujo
 recomendado para esta rama.
