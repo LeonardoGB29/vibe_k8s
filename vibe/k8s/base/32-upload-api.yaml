@@ -54,6 +54,12 @@ spec:
                   matchLabels:
                     app: upload-api
                 topologyKey: kubernetes.io/hostname
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: upload-api
           image: vibe-upload-api:dev
