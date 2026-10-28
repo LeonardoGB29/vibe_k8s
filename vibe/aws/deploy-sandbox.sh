@@ -6,7 +6,6 @@ REGION="us-east-1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIBE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$VIBE_DIR/.." && pwd)"
-BOOTSTRAP_DIR="$VIBE_DIR/terraform/bootstrap"
 ENV_DIR="$VIBE_DIR/terraform/envs/desarrollo"
 ARCHIVE="${TMPDIR:-/tmp}/vibe-aws.tar.gz"
 TF_PLAN="$(mktemp "${TMPDIR:-/tmp}/vibe-tfplan.XXXXXX")"
@@ -18,6 +17,36 @@ cleanup() {
   [[ -z "$REQUEST_FILE" ]] || rm -f "$REQUEST_FILE"
 }
 trap cleanup EXIT
+
+ensure_s3_bucket() {
+  local bucket="$1"
+  if aws s3api head-bucket --bucket "$bucket" --region "$REGION" >/dev/null 2>&1; then
+    echo "Reutilizando bucket existente: $bucket"
+  else
+    echo "Creando bucket: $bucket"
+    aws s3api create-bucket --bucket "$bucket" --region "$REGION" >/dev/null
+  fi
+
+  aws s3api put-public-access-block \
+    --bucket "$bucket" \
+    --public-access-block-configuration \
+      BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
+    --region "$REGION"
+  aws s3api put-bucket-encryption \
+    --bucket "$bucket" \
+    --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' \
+    --region "$REGION"
+  aws s3api put-bucket-versioning \
+    --bucket "$bucket" \
+    --versioning-configuration Status=Enabled \
+    --region "$REGION"
+
+  local policy_file
+  policy_file="$(mktemp)"
+  jq -n --arg bucket "$bucket" '{Version:"2012-10-17",Statement:[{Sid:"DenyInsecureTransport",Effect:"Deny",Principal:"*",Action:"s3:*",Resource:[("arn:aws:s3:::"+$bucket),("arn:aws:s3:::"+$bucket+"/*")],Condition:{Bool:{"aws:SecureTransport":"false"}}}]}' > "$policy_file"
+  aws s3api put-bucket-policy --bucket "$bucket" --policy "file://$policy_file" --region "$REGION"
+  rm -f "$policy_file"
+}
 
 for tool in aws terraform jq tar curl; do
   command -v "$tool" >/dev/null 2>&1 || die "No encuentro '$tool'. Ejecuta el script desde Lab IDE con las herramientas instaladas."
@@ -31,16 +60,17 @@ CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
 echo "Cuenta AWS: $ACCOUNT_ID"
 echo "Identidad:  $CALLER_ARN"
 echo "Región:     $REGION"
-echo "Se desplegarán cuatro instancias EC2, un ELB y buckets S3."
+echo "Se desplegarán cuatro instancias EC2, un ELB y tres buckets S3."
 read -r -p "Escribe desplegar para continuar: " CONFIRM
 [[ "$CONFIRM" == "desplegar" ]] || die "Despliegue cancelado."
 
-echo "=== 1/6 Creando el bucket Terraform ==="
-cd "$BOOTSTRAP_DIR"
-terraform init
-terraform apply -auto-approve
-STATE_BUCKET="$(terraform output -raw state_bucket)"
-[[ -n "$STATE_BUCKET" ]] || die "Terraform no devolvió state_bucket."
+echo "=== 1/6 Creando/configurando los buckets con AWS CLI ==="
+STATE_BUCKET="vibe-tfstate-${ACCOUNT_ID}"
+RAW_BUCKET="vibe-desarrollo-audio-raw-${ACCOUNT_ID}"
+HLS_BUCKET="vibe-desarrollo-audio-hls-${ACCOUNT_ID}"
+ensure_s3_bucket "$STATE_BUCKET"
+ensure_s3_bucket "$RAW_BUCKET"
+ensure_s3_bucket "$HLS_BUCKET"
 
 echo "=== 2/6 Creando la infraestructura ==="
 cd "$ENV_DIR"
@@ -49,8 +79,6 @@ terraform init -backend-config=backend.hcl -lockfile=readonly
 terraform plan -out="$TF_PLAN"
 terraform apply -auto-approve "$TF_PLAN"
 
-RAW_BUCKET="$(terraform output -raw raw_bucket)"
-HLS_BUCKET="$(terraform output -raw hls_bucket)"
 SERVER_ID="$(terraform output -raw server_instance_id)"
 ELB_URL="$(terraform output -raw elb_url)"
 

@@ -9,90 +9,24 @@ terraform {
   }
 }
 
+# Los buckets se crean/configuran desde aws/deploy-sandbox.sh con AWS CLI.
+# En AWS Academy, aws_s3_bucket no puede completar su lectura porque el rol
+# voclabs tiene un explicit deny para s3:GetBucketObjectLockConfiguration.
 variable "name_prefix" {
   description = "Prefijo de los buckets (ej. vibe-desarrollo)"
   type        = string
 }
 
-variable "force_destroy" {
-  description = "Permite destruir buckets con audios dentro (true solo en entornos desechables)"
-  type        = bool
-  default     = false
-}
-
 data "aws_caller_identity" "current" {}
 
 locals {
-  buckets = toset(["raw", "hls"])
-}
-
-resource "aws_s3_bucket" "audio" {
-  for_each = local.buckets
-
-  bucket        = "${var.name_prefix}-audio-${each.key}-${data.aws_caller_identity.current.account_id}"
-  force_destroy = var.force_destroy
-}
-
-resource "aws_s3_bucket_public_access_block" "audio" {
-  for_each = aws_s3_bucket.audio
-
-  bucket                  = each.value.id
-  block_public_acls       = true
-  block_public_policy     = true
-  ignore_public_acls      = true
-  restrict_public_buckets = true
-}
-
-# AWS Academy no permite usar una clave KMS administrada por el cliente; SSE-S3
-# sigue habilitado. Revisar esta excepción al salir del sandbox.
-#trivy:ignore:AVD-AWS-0132:exp:2027-04-27
-resource "aws_s3_bucket_server_side_encryption_configuration" "audio" {
-  for_each = aws_s3_bucket.audio
-
-  bucket = each.value.id
-
-  rule {
-    apply_server_side_encryption_by_default {
-      # SSE-S3 evita depender de permisos KMS que AWS Academy no concede.
-      sse_algorithm = "AES256"
-    }
-  }
-}
-
-data "aws_iam_policy_document" "tls_only" {
-  for_each = aws_s3_bucket.audio
-
-  statement {
-    sid       = "DenyInsecureTransport"
-    effect    = "Deny"
-    actions   = ["s3:*"]
-    resources = [each.value.arn, "${each.value.arn}/*"]
-
-    principals {
-      type        = "*"
-      identifiers = ["*"]
-    }
-
-    condition {
-      test     = "Bool"
-      variable = "aws:SecureTransport"
-      values   = ["false"]
-    }
-  }
-}
-
-resource "aws_s3_bucket_policy" "audio" {
-  for_each = aws_s3_bucket.audio
-
-  bucket     = each.value.id
-  policy     = data.aws_iam_policy_document.tls_only[each.key].json
-  depends_on = [aws_s3_bucket_public_access_block.audio]
+  account_id = data.aws_caller_identity.current.account_id
 }
 
 output "raw_bucket" {
-  value = aws_s3_bucket.audio["raw"].bucket
+  value = "${var.name_prefix}-audio-raw-${local.account_id}"
 }
 
 output "hls_bucket" {
-  value = aws_s3_bucket.audio["hls"].bucket
+  value = "${var.name_prefix}-audio-hls-${local.account_id}"
 }

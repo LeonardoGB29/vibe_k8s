@@ -24,8 +24,6 @@ module "storage" {
   source = "../../modules/storage"
 
   name_prefix = local.name
-  # Entorno desechable de pruebas: permite `terraform destroy` con audios dentro.
-  force_destroy = true
 }
 
 module "cluster" {
