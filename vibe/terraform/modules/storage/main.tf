@@ -43,6 +43,9 @@ resource "aws_s3_bucket_public_access_block" "audio" {
   restrict_public_buckets = true
 }
 
+# AWS Academy no permite usar una clave KMS administrada por el cliente; SSE-S3
+# sigue habilitado. Revisar esta excepción al salir del sandbox.
+#trivy:ignore:AVD-AWS-0132:exp:2027-04-27
 resource "aws_s3_bucket_server_side_encryption_configuration" "audio" {
   for_each = aws_s3_bucket.audio
 

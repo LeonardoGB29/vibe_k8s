@@ -195,6 +195,9 @@ resource "aws_instance" "agent" {
 }
 
 # Classic ELB (como el stack original): reparte el puerto 80 hacia Traefik en los agentes.
+# Excepción temporal AWS-0053: endpoint HTTP público requerido por la demo;
+# el grupo del ELB solo acepta puerto 80 y los nodos no admiten entrada pública.
+#trivy:ignore:AVD-AWS-0053:exp:2027-04-27
 resource "aws_elb" "this" {
   # ELB HTTP público requerido para la demo académica; los nodos no exponen
   # entrada pública y el SG del ELB solo admite HTTP por el puerto 80.
