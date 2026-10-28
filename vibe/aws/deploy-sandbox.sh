@@ -7,16 +7,22 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIBE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$VIBE_DIR/.." && pwd)"
 ENV_DIR="$VIBE_DIR/terraform/envs/desarrollo"
-ARCHIVE="${TMPDIR:-/tmp}/vibe-aws.tar.gz"
-TF_PLAN="$(mktemp "${TMPDIR:-/tmp}/vibe-tfplan.XXXXXX")"
-REQUEST_FILE=""
+WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vibe-deploy.XXXXXX")"
+ARCHIVE="$WORK_DIR/vibe-aws.tar.gz"
+TF_PLAN="$WORK_DIR/terraform.tfplan"
+REQUEST_FILE="$WORK_DIR/ssm-request.json"
 
 die() { echo "ERROR: $*" >&2; exit 1; }
-cleanup() {
-  rm -f "$TF_PLAN"
-  [[ -z "$REQUEST_FILE" ]] || rm -f "$REQUEST_FILE"
-}
+cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
+
+require_free_space() {
+  local path="$1" minimum_mib="$2" label="$3" available_mib
+  available_mib="$(df -Pm "$path" | awk 'NR == 2 {print $4}')"
+  echo "Espacio libre en $label ($path): ${available_mib} MiB"
+  [[ "$available_mib" =~ ^[0-9]+$ ]] || die "No pude medir el espacio libre en $path."
+  (( available_mib >= minimum_mib )) || die "Espacio insuficiente en $label: hay ${available_mib} MiB y se requieren al menos ${minimum_mib} MiB. Libera espacio y vuelve a ejecutar."
+}
 
 ensure_s3_bucket() {
   local bucket="$1"
@@ -64,6 +70,12 @@ echo "Se desplegarán cuatro instancias EC2, un ELB y tres buckets S3."
 read -r -p "Escribe desplegar para continuar: " CONFIRM
 [[ "$CONFIRM" == "desplegar" ]] || die "Despliegue cancelado."
 
+echo "=== Revisando espacio local antes de Terraform ==="
+require_free_space "$ENV_DIR" "${VIBE_MIN_LOCAL_MIB:-700}" "CloudShell"
+# .terraform es una caché regenerable; eliminarla evita que providers viejos
+# consuman el escaso disco persistente de CloudShell en reintentos.
+rm -rf "$ENV_DIR/.terraform"
+
 echo "=== 1/6 Creando/configurando los buckets con AWS CLI ==="
 STATE_BUCKET="vibe-tfstate-${ACCOUNT_ID}"
 RAW_BUCKET="vibe-desarrollo-audio-raw-${ACCOUNT_ID}"
@@ -76,7 +88,9 @@ echo "=== 2/6 Creando la infraestructura ==="
 cd "$ENV_DIR"
 printf 'bucket = "%s"\n' "$STATE_BUCKET" > backend.hcl
 terraform init -backend-config=backend.hcl -lockfile=readonly
+require_free_space "$ENV_DIR" "${VIBE_MIN_AFTER_INIT_MIB:-250}" "CloudShell después de instalar providers Terraform"
 terraform plan -out="$TF_PLAN"
+require_free_space "$ENV_DIR" "${VIBE_MIN_AFTER_PLAN_MIB:-150}" "CloudShell después de crear el plan Terraform"
 terraform apply -auto-approve "$TF_PLAN"
 
 SERVER_ID="$(terraform output -raw server_instance_id)"
@@ -103,8 +117,17 @@ until [[ "$(aws ssm describe-instance-information \
 done
 
 echo "=== 5/6 Instalando K3s y desplegando VIBE ==="
-REMOTE_SCRIPT="sudo -iu ec2-user bash -lc 'set -euo pipefail; aws s3 cp s3://${RAW_BUCKET}/deployment/vibe-aws.tar.gz ~/vibe-aws.tar.gz --region ${REGION}; tar -xzf ~/vibe-aws.tar.gz -C ~; cd ~/vibe_k8s/vibe; bash aws/cluster-init.sh ${RAW_BUCKET} ${HLS_BUCKET}'"
-REQUEST_FILE="$(mktemp)"
+REMOTE_SCRIPT="set -eu
+docker system prune -af
+FREE_MIB=\$(df -Pm / | awk 'NR == 2 {print \$4}')
+echo \"Espacio libre en k3s-server: \${FREE_MIB} MiB\"
+if [ \"\$FREE_MIB\" -lt \${VIBE_MIN_SERVER_MIB:-6000} ]; then echo 'Espacio insuficiente en k3s-server para construir imágenes Docker (se requieren 6000 MiB libres).' >&2; exit 1; fi
+aws s3 cp s3://${RAW_BUCKET}/deployment/vibe-aws.tar.gz /home/ec2-user/vibe-aws.tar.gz --region ${REGION}
+tar -xzf /home/ec2-user/vibe-aws.tar.gz -C /home/ec2-user
+rm -f /home/ec2-user/vibe-aws.tar.gz
+cd /home/ec2-user/vibe_k8s/vibe
+export KUBECONFIG=/home/ec2-user/.kube/config
+bash aws/cluster-init.sh ${RAW_BUCKET} ${HLS_BUCKET}"
 jq -n \
   --arg id "$SERVER_ID" \
   --arg command "$REMOTE_SCRIPT" \
@@ -131,12 +154,16 @@ while true; do
 done
 
 echo "=== 6/6 Verificando la URL pública ==="
-if ! curl -fsS --retry 30 --retry-delay 10 --retry-connrefused --retry-all-errors -o /dev/null "$ELB_URL"; then
-  die "La aplicación fue instalada, pero el ELB aún no responde. Revisa los pods con kubectl mediante SSM."
-fi
-
+INVOCATION="$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$SERVER_ID" --output json --region "$REGION")"
+echo "=== Estado de los pods, servicios e ingress ==="
+jq -r '.StandardOutputContent // ""' <<< "$INVOCATION"
+for path in / /api/stats /api/tracks; do
+  curl -fsS --retry 10 --retry-delay 5 --retry-connrefused --retry-all-errors \
+    -o /dev/null -w "$path -> %{http_code}\n" "$ELB_URL$path" \
+    || die "Falló la verificación de $path en el ELB. Revisa el estado de los pods e ingress mostrado arriba."
+done
 echo "Despliegue terminado."
-echo "URL:        $ELB_URL"
 echo "Bucket Raw: $RAW_BUCKET"
 echo "Bucket HLS: $HLS_BUCKET"
+echo "URL:        $ELB_URL"
 echo "Guarda estos datos y las evidencias antes de que expire el sandbox."
