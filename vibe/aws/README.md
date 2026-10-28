@@ -51,6 +51,11 @@ El Terraform vigente exige IMDSv2 y cifra los discos. El ELB HTTP público es
 intencional para la demo, SSE-S3 se mantiene porque el sandbox no da permisos
 KMS suficientes, y el egress global temporal se necesita para paquetes,
 imágenes y componentes del clúster sin endpoints privados disponibles.
+Trivy conserva esos tres hallazgos como excepciones locales a los recursos
+afectados (`AWS-0132` en los buckets, `AWS-0053` en el ELB y `AWS-0104` en el
+egress), cada una con vencimiento el 27 de abril de 2027. El gate sigue fallando
+ante otros hallazgos `HIGH` o `CRITICAL`; al vencer, las excepciones vuelven a
+requerir revisión.
 
 ## 2. Copiar el paquete al servidor
 
