@@ -22,6 +22,16 @@ infraestructura y la aplicación en una sola ejecución; solicita escribir
 bash aws/deploy-sandbox.sh
 ```
 
+Si Terraform no esta instalado, el script descarga Terraform 1.17.1 desde
+[HashiCorp](https://developer.hashicorp.com/terraform/install), verifica su SHA-256
+y lo instala en `~/.local/bin`, sin `sudo`. Admite Linux x86_64 y ARM64 y requiere
+`python3` para verificar y extraer el ZIP. El script agrega esa carpeta a su propio
+`PATH` y reutiliza la instalacion en las siguientes ejecuciones; si Terraform ya
+esta en el `PATH`, utiliza esa instalacion. Puedes elegir otra version compatible
+con `TERRAFORM_VERSION=1.17.1 bash aws/deploy-sandbox.sh`. Para usar el comando
+`terraform` directamente en la terminal despues, ejecuta
+`export PATH="$HOME/.local/bin:$PATH"`.
+
 El script crea/configura tres buckets con AWS CLI y usa Terraform para crear
 cuatro EC2, un ELB y los demás recursos. Este flujo evita la lectura de S3 Object
 Lock denegada al proveedor Terraform por la política del rol `voclabs`. Antes de
