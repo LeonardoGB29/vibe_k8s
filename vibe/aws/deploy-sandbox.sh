@@ -17,6 +17,65 @@ die() { echo "ERROR: $*" >&2; exit 1; }
 cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
 
+ensure_terraform() {
+  command -v terraform >/dev/null 2>&1 && return 0
+
+  # Reutilizar una instalacion anterior aunque ~/.local/bin no este en PATH.
+  local install_dir="$HOME/.local/bin"
+  export PATH="$install_dir:$PATH"
+  command -v terraform >/dev/null 2>&1 && return 0
+
+  command -v python3 >/dev/null 2>&1 || die "Se necesita python3 para verificar y extraer Terraform."
+  local version="${TERRAFORM_VERSION:-1.17.1}" arch filename base_url download_dir
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "TERRAFORM_VERSION debe tener el formato X.Y.Z."
+  [[ "$(uname -s)" == "Linux" ]] || die "La instalacion automatica de Terraform requiere Linux (Lab IDE o CloudShell)."
+  case "$(uname -m)" in
+    x86_64|amd64) arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *) die "Arquitectura no compatible con la instalacion automatica de Terraform: $(uname -m)." ;;
+  esac
+
+  filename="terraform_${version}_linux_${arch}.zip"
+  base_url="https://releases.hashicorp.com/terraform/$version"
+  download_dir="$WORK_DIR/terraform-install"
+  mkdir -p "$download_dir" "$install_dir"
+  echo "Terraform no esta instalado. Instalando $version en $install_dir..."
+  curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 \
+    "$base_url/$filename" -o "$download_dir/$filename" \
+    || die "No se pudo descargar Terraform $version desde HashiCorp."
+  curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 \
+    "$base_url/terraform_${version}_SHA256SUMS" -o "$download_dir/SHA256SUMS" \
+    || die "No se pudieron descargar los checksums de Terraform."
+
+  python3 - "$download_dir" "$filename" <<'PY' || die "No se pudo verificar o extraer Terraform."
+import hashlib
+import pathlib
+import shutil
+import sys
+import zipfile
+
+directory = pathlib.Path(sys.argv[1])
+filename = sys.argv[2]
+checksums = dict(
+    (name.lstrip("*"), digest)
+    for digest, name in (
+        line.split() for line in (directory / "SHA256SUMS").read_text().splitlines()
+        if line.strip()
+    )
+)
+archive = directory / filename
+if hashlib.sha256(archive.read_bytes()).hexdigest() != checksums.get(filename):
+    sys.exit("ERROR: El SHA-256 de Terraform no coincide con el publicado por HashiCorp.")
+with zipfile.ZipFile(archive) as package:
+    with package.open("terraform") as source, (directory / "terraform").open("wb") as target:
+        shutil.copyfileobj(source, target)
+PY
+  chmod 0755 "$download_dir/terraform"
+  mv "$download_dir/terraform" "$install_dir/terraform"
+  rm -rf "$download_dir"
+  terraform version || die "Terraform se instalo, pero no se pudo ejecutar."
+}
+
 require_free_space() {
   local path="$1" minimum_mib="$2" label="$3" available_mib
   available_mib="$(df -Pm "$path" | awk 'NR == 2 {print $4}')"
@@ -79,9 +138,10 @@ ensure_s3_bucket() {
   rm -f "$policy_file"
 }
 
-for tool in aws terraform jq tar curl; do
+for tool in aws jq tar curl; do
   command -v "$tool" >/dev/null 2>&1 || die "No encuentro '$tool'. Ejecuta el script desde Lab IDE con las herramientas instaladas."
 done
+ensure_terraform
 
 export AWS_DEFAULT_REGION="$REGION"
 aws sts get-caller-identity >/dev/null || die "Las credenciales AWS no son válidas o expiraron. Reinicia el Lab y vuelve a ejecutar el script."
