@@ -9,21 +9,31 @@ $instanceName = 'vibe-desarrollo-k3s-server'
 $promptedForCredentials = $false
 
 trap {
+    $caughtError = $_
     if ($promptedForCredentials) {
         Remove-Item Env:\AWS_ACCESS_KEY_ID, Env:\AWS_SECRET_ACCESS_KEY, Env:\AWS_SESSION_TOKEN, Env:\AWS_DEFAULT_REGION -ErrorAction SilentlyContinue
     }
-    throw
+    Write-Host "ERROR: $($caughtError.Exception.Message)" -ForegroundColor Red
+    break
 }
 
 function Get-AwsAccountId {
-    $account = & aws sts get-caller-identity --query Account --output text 2>$null
-    if ($LASTEXITCODE -ne 0) { return $null }
-    return "$account".Trim()
+    try {
+        $account = & aws sts get-caller-identity --query Account --output text 2>$null
+        if ($LASTEXITCODE -ne 0) { return $null }
+        return "$account".Trim()
+    } catch {
+        return $null
+    }
 }
 
 Write-Host 'Conexion SSM al API de Kubernetes de VIBE' -ForegroundColor Cyan
 $remoteHost = Read-Host 'DNS o IP privado del API/servidor K3s (vacio = detectar automaticamente)'
 $portText = Read-Host 'Puerto remoto del API Kubernetes [6443]'
+if (-not [string]::IsNullOrWhiteSpace($remoteHost) -and
+    ($remoteHost -match '^https?://' -or $remoteHost.Contains('/') -or $remoteHost.Contains(':'))) {
+    throw 'Ese campo requiere solo el DNS privado o la IP privada del servidor K3s. Para deteccion automatica, dejalo vacio; no ingreses la URL del ELB.'
+}
 if ([string]::IsNullOrWhiteSpace($portText)) { $portText = '6443' }
 $remotePort = 0
 if (-not [int]::TryParse($portText, [ref]$remotePort) -or $remotePort -lt 1 -or $remotePort -gt 65535) {
