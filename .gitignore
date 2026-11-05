@@ -22,3 +22,6 @@ vibe/data/audio/*.wav
 crash.log
 *.auto.tfvars
 backend.hcl
+*.tfvars
+!*.tfvars.example
+*.tfplan
