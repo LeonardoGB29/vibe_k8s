@@ -3,11 +3,11 @@
 Hay tres entornos, cada uno con su propio clúster k3s, Classic ELB, buckets S3, rol de
 nodos y monitoreo, en la región asignada a la cuenta (`us-east-2`):
 
-| Entorno | Nodos (por defecto) | vCPU | Base de datos | USD/día aprox. (24/7) |
-|---|---|---:|---|---:|
-| `desarrollo` | 1 servidor `t3.medium` + 1 agente `t3.small` | 4 | PostgreSQL en el clúster | 2,45 |
-| `staging` | 1 servidor + 2 agentes | 6 | RDS Single-AZ | 3,63 |
-| `produccion` | 1 servidor + 3 agentes | 8 | RDS Multi-AZ | 4,81 |
+| Entorno | Rol | Nodos (por defecto) | vCPU | Autoescalado (techo) | Base de datos | USD/día aprox. (24/7) |
+|---|---|---|---:|---|---|---:|
+| `desarrollo` | pruebas de código | 1 servidor `t3.medium` + 1 agente `t3.small` | 4 | APIs 1–2, worker hasta 2 | PostgreSQL en el clúster | 2,45 |
+| `staging` | pruebas de carga | 1 servidor + 2 agentes | 6 | APIs 2–5, worker hasta 5 | RDS Single-AZ | 3,63 |
+| `produccion` | referencia | 1 servidor + 3 agentes | 8 | APIs 2–8 (stream-api 2–10), worker hasta 8 | RDS Multi-AZ | 4,81 |
 
 Los discos EBS gp2 son de 20 GB (servidor) y 15 GB (cada agente). Los nodos se
 administran con SSM Session Manager: no hay SSH ni claves `.pem`. El detalle de

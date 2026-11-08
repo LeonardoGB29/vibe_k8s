@@ -20,11 +20,11 @@ dashboard CloudWatch y (staging/producción) RDS. Lo único que se comparte es l
 VPC predeterminada de la cuenta: el aislamiento es por security group, no por
 VPC.
 
-| Entorno | Nodos (por defecto) | vCPU | RDS | USD/día aprox. (24/7) |
-|---|---|---:|---|---:|
-| `desarrollo` | 1 servidor `t3.medium` + 1 agente `t3.small` | 4 | no (PostgreSQL en el clúster) | 2,45 |
-| `staging` | 1 servidor + 2 agentes | 6 | Single-AZ `db.t3.micro` | 3,63 |
-| `produccion` | 1 servidor + 3 agentes | 8 | Multi-AZ `db.t3.micro` | 4,81 |
+| Entorno | Rol | Nodos (por defecto) | vCPU | RDS | USD/día aprox. (24/7) |
+|---|---|---|---:|---|---:|
+| `desarrollo` | pruebas de código | 1 servidor `t3.medium` + 1 agente `t3.small` | 4 | no (PostgreSQL en el clúster) | 2,45 |
+| `staging` | pruebas de carga | 1 servidor + 2 agentes | 6 | Single-AZ `db.t3.micro` | 3,63 |
+| `produccion` | referencia | 1 servidor + 3 agentes | 8 | Multi-AZ `db.t3.micro` | 4,81 |
 
 Los tres a la vez suman 18 vCPU y ≈10,9 USD/día. **Comprueba la cuota de EC2 antes de
 desplegar** (`aws service-quotas get-service-quota --region us-east-2 --service-code ec2

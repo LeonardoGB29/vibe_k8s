@@ -5,12 +5,12 @@ datos de cada entorno. En AWS **cada entorno corre en su propio clúster k3s** (
 ELB, buckets, rol de nodos y, en staging y producción, su RDS); el namespace sigue
 distinto por convención y para poder leer los recursos sin confusión.
 
-| Entorno | Overlay | Namespace | Clúster AWS (por defecto) | Base de datos | Escalado |
-|---|---|---|---|---|---|
-| Pruebas | `overlays/test` | `vibe` | kind (local o job `test-kind` del CI) | PostgreSQL y SeaweedFS/MinIO locales | réplicas del CI |
-| Desarrollo | `overlays/desarrollo` | `vibe` | 1 servidor + 1 agente (4 vCPU) | PostgreSQL local en el clúster | APIs 1 réplica, HPA 1–2; worker (KEDA) hasta 2 |
-| Staging | `overlays/staging` | `vibe-staging` | 1 servidor + 2 agentes (6 vCPU) | RDS PostgreSQL Single-AZ | HPA hasta 5; worker hasta 5 |
-| Producción | `overlays/produccion` | `vibe-produccion` | 1 servidor + 3 agentes (8 vCPU) | RDS PostgreSQL Multi-AZ | worker hasta 8 |
+| Entorno | Rol | Overlay | Namespace | Clúster AWS (por defecto) | Base de datos | Autoescalado (techo) |
+|---|---|---|---|---|---|---|
+| Pruebas | CI y kind local | `overlays/test` | `vibe` | kind (local o job `test-kind` del CI) | PostgreSQL y SeaweedFS/MinIO locales | réplicas del CI |
+| Desarrollo | pruebas de código | `overlays/desarrollo` | `vibe` | 1 servidor + 1 agente (4 vCPU) | PostgreSQL local en el clúster | APIs 1–2 réplicas; worker (KEDA) hasta 2 |
+| Staging | pruebas de carga | `overlays/staging` | `vibe-staging` | 1 servidor + 2 agentes (6 vCPU) | RDS PostgreSQL Single-AZ | APIs 2–5 réplicas; worker hasta 5 |
+| Producción | referencia | `overlays/produccion` | `vibe-produccion` | 1 servidor + 3 agentes (8 vCPU) | RDS PostgreSQL Multi-AZ | APIs 2–8 (stream-api 2–10); worker hasta 8 |
 
 El número de agentes se cambia con `-var=agent_count=N` en `terraform/envs/<entorno>`.
 Staging y producción no incluyen el StatefulSet de PostgreSQL: los servicios leen
