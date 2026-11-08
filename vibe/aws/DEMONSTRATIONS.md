@@ -39,4 +39,4 @@ requiere Docker, imágenes :dev y permisos de distribución mediante S3/SSM.
 Limitaciones: un solo servidor de control, PVC locales y Redis BLPOP sin
 confirmación/reentrega de trabajos interrumpidos. Eliminar un pod directamente
 no prueba protección mediante PDB. No detener nodos de almacenamiento ni el
-servidor de control con este procedimiento. Guardar evidencias fuera del Sandbox.
+servidor de control con este procedimiento. Guardar evidencias fuera de AWS.

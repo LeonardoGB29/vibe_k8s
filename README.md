@@ -1,6 +1,6 @@
 # VIBE · Plataforma de streaming de audio sobre Kubernetes
 
-## Despliegue actual en AWS Academy
+## Despliegue en AWS
 
 La aplicación actual tiene cinco microservicios: frontend, catalog-api, upload-api,
 stream-api y worker. En AWS se ejecutan en cuatro EC2 con k3s, Traefik y S3 real.

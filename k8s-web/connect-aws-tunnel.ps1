@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [string]$Region = $(if ($env:AWS_DEFAULT_REGION) { $env:AWS_DEFAULT_REGION } else { 'us-east-1' }),
+    [string]$Region = $(if ($env:AWS_DEFAULT_REGION) { $env:AWS_DEFAULT_REGION } else { 'us-east-2' }),
     [string]$InstanceName = $(if ($env:VIBE_K3S_SERVER_TAG) { $env:VIBE_K3S_SERVER_TAG } else { 'vibe-desarrollo-k3s-server' }),
     [string]$ExpectedAccountId = $env:VIBE_AWS_ACCOUNT_ID,
     [string]$RemoteHost = '',
@@ -56,7 +56,7 @@ try {
 
     $accountId = Get-AwsAccountId
     if (-not $accountId) {
-        Write-Host 'Introduce las credenciales temporales de AWS Academy (AWS Details > AWS CLI > Show). Se usan en esta ventana y no se guardan.' -ForegroundColor Yellow
+        Write-Host "Inicia sesión con 'aws login' o define AWS_PROFILE antes de ejecutar este lanzador." -ForegroundColor Yellow
         foreach ($name in @('AWS_ACCESS_KEY_ID', 'AWS_SECRET_ACCESS_KEY', 'AWS_SESSION_TOKEN', 'AWS_DEFAULT_REGION')) {
             $oldCredentialEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
         }
@@ -69,7 +69,7 @@ try {
         $promptedForCredentials = $true
         $accountId = Get-AwsAccountId
     }
-    if (-not $accountId) { throw 'AWS no acepto las credenciales. Verifica que el laboratorio siga activo y que copiaste los tres valores de AWS CLI.' }
+    if (-not $accountId) { throw 'AWS no acepto las credenciales. Verifica que tu sesión de AWS siga activa (aws login) o que copiaste los tres valores de AWS CLI.' }
     if ($ExpectedAccountId -and $accountId -ne $ExpectedAccountId) {
         throw "La identidad corresponde a la cuenta '$accountId'; se esperaba '$ExpectedAccountId'. Revisa VIBE_AWS_ACCOUNT_ID."
     }

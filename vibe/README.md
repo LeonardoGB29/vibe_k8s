@@ -1,6 +1,6 @@
 # VIBE · Plataforma de streaming de audio sobre Kubernetes
 
-## Despliegue actual en AWS Academy
+## Despliegue en AWS
 
 La aplicación actual tiene cinco microservicios: frontend, catalog-api, upload-api,
 stream-api y worker. En AWS se ejecutan en cuatro EC2 con k3s, Traefik y S3 real.
@@ -110,7 +110,7 @@ redis list: keda_scaler_metrics_value{scaledObject="worker"}
 api/         FastAPI + frontend estático (app/static)
 worker/      transcodificador ffmpeg
 tools/       gen_audio.py (dataset), seed.py (carga masiva)
-k8s/         kustomize: base/ (común), overlays/{test,desarrollo}, legacy/ (monolito) y kind-config.yaml
+k8s/         kustomize: base/ (común), overlays/{test,desarrollo} y kind-config.yaml
 tests/k6/    load, stress, spike, upload
 chaos/       scripts de tolerancia a fallos
 docs/        informe y evidencia

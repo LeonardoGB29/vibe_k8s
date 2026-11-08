@@ -15,7 +15,7 @@ En Windows: `python server.py`; la pestaña Terminal necesita `bash` (Git Bash).
 
 ## Conectarse al cluster de AWS desde Windows
 
-Despues de completar `vibe/aws/deploy-sandbox.sh` en CloudShell, abre la carpeta del
+Despues de completar `vibe/aws/deploy-aws.sh`, abre la carpeta del
 repositorio en Windows y haz doble clic en `Conectar VIBE AWS.cmd`. El lanzador detecta
 el servidor K3s, prepara el kubeconfig, mantiene el tunel SSM abierto y abre este panel
 en el navegador. Deja abierta la ventana de consola mientras uses el panel; al cerrarla
@@ -23,8 +23,8 @@ se detienen el tunel y el servidor local.
 
 En esa PC se necesita AWS CLI v2 con Session Manager plugin, `kubectl` y Python 3.9 o
 superior. Si AWS CLI ya tiene una sesion valida, el lanzador la reutiliza. Si no, solicita
-las credenciales temporales de AWS Academy una vez para esa conexion. No las guarda;
-cuando el laboratorio expire hay que iniciar una nueva sesion y usar sus credenciales.
+las credenciales de AWS una vez para esa conexion. No las guarda;
+cuando la sesión expire hay que iniciar otra (`aws login`).
 Se puede configurar `AWS_DEFAULT_REGION`, `VIBE_K3S_SERVER_TAG` y, opcionalmente,
 `VIBE_AWS_ACCOUNT_ID` para adaptar la conexion a otro entorno.
 

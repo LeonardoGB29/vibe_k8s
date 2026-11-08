@@ -1,157 +1,87 @@
-# VIBE en AWS Academy Cloud Foundations Sandbox
+# VIBE en AWS
 
-El despliegue se hará en el sandbox de AWS Academy Cloud Foundations. El sandbox
-limita los recursos a `us-east-1`, limpia la cuenta al terminar cada sesión,
-permite hasta 9 EC2 concurrentes y provee `LabInstanceProfile`, `LabRole` y la
-clave `vockey`. IAM es de solo lectura: se reutilizan esos roles existentes.
-El clúster previsto usa cuatro EC2 (`t3.medium` + 3 `t3.small`). Usa volúmenes
-EBS gp2 de hasta 35 GB; Terraform configura 20 GB para el servidor y 15 GB para
-cada agente.
+El entorno `desarrollo` corre en la región asignada a la cuenta (`us-east-2`):
+cuatro EC2 (`t3.medium` para el servidor k3s + 3 `t3.small` como agentes), un
+Classic ELB y buckets S3. Los discos EBS gp2 son de 20 GB (servidor) y 15 GB
+(cada agente). Los nodos se administran con SSM Session Manager: no hay SSH ni
+claves `.pem`. El detalle de Terraform, el pipeline CI/CD y las variables de
+GitHub están en [terraform/README.md](../terraform/README.md).
 
-Ejecuta el despliegue desde una terminal AWS Academy con credenciales CLI
-temporales. No hace falta copiarlas a GitHub Secrets. Guarda outputs y evidencias
-fuera de AWS antes de que termine la sesión.
+**Costo aproximado** encendido 24/7: ~3,8 USD/día (~0,85 USD/día con las EC2
+apagadas, porque ELB, discos y alarmas siguen cobrando). El guardián de créditos
+(`terraform/account`) pausa EC2 y RDS cuando los créditos bajan del umbral.
 
-## 1. Desplegar con Terraform desde Lab IDE
-
-Usa un checkout actualizado con los cambios de esta guía. El script instala la
-infraestructura y la aplicación en una sola ejecución; solicita escribir
-`desplegar` antes de crear recursos.
+## 1. Preparar la cuenta (una sola vez)
 
 ```bash
-bash aws/deploy-sandbox.sh
+export AWS_PROFILE=<tu perfil>                 # sesión iniciada con `aws login`
+VIBE_ALERT_EMAIL=tu@correo bash aws/init-account.sh
 ```
 
-Si Terraform no esta instalado, el script descarga Terraform 1.17.1 desde
-[HashiCorp](https://developer.hashicorp.com/terraform/install), verifica su SHA-256
-y lo instala en `~/.local/bin`, sin `sudo`. Admite Linux x86_64 y ARM64 y requiere
-`python3` para verificar y extraer el ZIP. El script agrega esa carpeta a su propio
-`PATH` y reutiliza la instalacion en las siguientes ejecuciones; si Terraform ya
-esta en el `PATH`, utiliza esa instalacion. Puedes elegir otra version compatible
-con `TERRAFORM_VERSION=1.17.1 bash aws/deploy-sandbox.sh`. Para usar el comando
-`terraform` directamente en la terminal despues, ejecuta
-`export PATH="$HOME/.local/bin:$PATH"`.
+Crea el bucket del state de Terraform, el guardián de créditos y los roles OIDC
+de GitHub Actions. Pide escribir `continuar` antes de crear nada.
 
-El script crea/configura tres buckets con AWS CLI y usa Terraform para crear
-cuatro EC2, un ELB y los demás recursos. Este flujo evita la lectura de S3 Object
-Lock denegada al proveedor Terraform por la política del rol `voclabs`. Antes de
-continuar revisa el espacio disponible en CloudShell, el servidor y cada agente;
-limpia la caché Docker antigua y se detiene con un mensaje claro si falta espacio.
-Al terminar muestra el estado de pods, servicios e ingress, comprueba `/`,
-`/api/stats` y `/api/tracks`, y deja la URL pública al final. El state S3 y el
-resto de los recursos desaparecen cuando el sandbox termina la sesión.
-
-La sección CloudFormation que sigue describe el despliegue heredado, no el flujo
-recomendado para esta rama.
-
-El CI y el escaneo IaC consideran activos Terraform y los overlays actuales de
-`k8s/`; `cloudformation.yaml` y `k8s/legacy/` se conservan como referencia
-histórica, pero no se despliegan ni forman parte del gate activo. El stack
-CloudFormation antiguo permite SSH, NodePort y API de Kubernetes desde Internet,
-no exige IMDSv2 ni cifra explícitamente EBS; no debe usarse en una cuenta real.
-El Terraform vigente exige IMDSv2 y cifra los discos. El ELB HTTP público es
-intencional para la demo, SSE-S3 se mantiene porque el sandbox no da permisos
-KMS suficientes, y el egress global temporal se necesita para paquetes,
-imágenes y componentes del clúster sin endpoints privados disponibles.
-El script configura los buckets con bloqueo de acceso público, SSE-S3 y una
-política TLS; Trivy no inspecciona estas llamadas AWS CLI. Las excepciones IaC
-temporales restantes son `AWS-0053` en el ELB y `AWS-0104` en el egress, ambas
-con vencimiento el 27 de abril de 2027. El gate sigue fallando ante otros
-hallazgos `HIGH` o `CRITICAL`; al vencer, las excepciones vuelven a requerir
-revisión.
-
-## 2. Copiar el paquete al servidor
-
-### Desde S3 y Session Manager (ruta recomendada con el clúster creado)
-
-Subir la versión actual de `vibe-aws.tar.gz` desde la consola S3 al bucket Raw,
-con la clave `deployment/vibe-aws.tar.gz`. No subir archivos PEM.
-Dentro de Session Manager del servidor:
+## 2. Desplegar el entorno desarrollo
 
 ```bash
-sudo -iu ec2-user
-aws s3 cp s3://RAW_BUCKET_NAME/deployment/vibe-aws.tar.gz ~/vibe-aws.tar.gz --region us-east-1
-tar -xzf ~/vibe-aws.tar.gz -C ~
-cd ~/vibe_k8s/vibe
-bash aws/cluster-init.sh RAW_BUCKET_NAME HLS_BUCKET_NAME
+bash aws/deploy-aws.sh          # o: make aws-up
 ```
 
-El instalador AWS usa Traefik (chart 41.6.0, NodePort 30080) y KEDA 2.21.0,
-cuya matriz incluye Kubernetes 1.36. Distribuye las imágenes mediante S3 y SSM
-Run Command. Comprueba primero que los tres agentes están Online en SSM.
-LabRole necesita permitir lectura EC2, S3 y SSM Run Command; si el Sandbox deniega
-alguna acción, se detiene. La alternativa SSH se activa con
-`IMAGE_DISTRIBUTION=ssh SSH_PRIVATE_KEY=~/labsuser.pem`.
-Las imágenes temporales quedan bajo `deployment/images/` en el bucket Raw.
-Esta ruta aún debe verificarse en el laboratorio; la validación local es sintáctica.
+Solicita escribir `desplegar`. Crea/configura tres buckets con AWS CLI, aplica
+Terraform (cuatro EC2, ELB, IAM de los nodos, CloudWatch), empaqueta la
+aplicación, la instala en el servidor por SSM (`cluster-init.sh`), comprueba `/`,
+`/api/stats` y `/api/tracks` y muestra la URL pública. Antes de empezar revisa
+el espacio libre local, en el servidor y en cada agente.
 
-### Alternativa SSH
+Si Terraform no está instalado, el script descarga la versión `TERRAFORM_VERSION`
+(1.16.6 por defecto) desde HashiCorp, verifica su SHA-256 y la instala en
+`~/.local/bin` (Linux x86_64/ARM64, requiere `python3`).
 
-Descargar labsuser.pem desde Details → Show → Download PEM del laboratorio.
-Ejecutar desde el Mac, reemplazando SERVER_PUBLIC_IP por el output real:
+`cluster-init.sh` instala Traefik (chart 41.6.0, NodePort 30080) y KEDA (la
+versión está en `k8s/KEDA_VERSION`), construye las imágenes en el servidor y las
+distribuye a los agentes con S3 y SSM Run Command (`build-and-load.sh`,
+`distribute-ssm.sh`).
 
-```bash
-chmod 400 ~/Downloads/labsuser.pem
-scp -i ~/Downloads/labsuser.pem /Users/kevrodlm/Downloads/cloud/vibe-aws.tar.gz ec2-user@SERVER_PUBLIC_IP:~/
-scp -i ~/Downloads/labsuser.pem ~/Downloads/labsuser.pem ec2-user@SERVER_PUBLIC_IP:~/labsuser.pem
-ssh -i ~/Downloads/labsuser.pem ec2-user@SERVER_PUBLIC_IP
-```
+## 3. Desplegar nuevas versiones
 
-La clave en el servidor se usa para importar imágenes en los tres agentes por
-SSH privado. No incluirla en Git, en el paquete, ni en capturas.
+Con el pipeline: un push a `develop` publica las imágenes y despliega en
+desarrollo; `main` despliega en staging y, tras aprobación, en producción
+(variable de repositorio `AUTO_DEPLOY=true`). También se puede lanzar a mano el
+workflow `deploy` con el SHA completo de un commit. Ver
+[terraform/README.md](../terraform/README.md#pipeline-cicd).
 
-En el servidor, comprobar que terminó su instalación inicial:
+Para repetir las pruebas medidas y guardar evidencia, ver
+[DEMONSTRATIONS.md](DEMONSTRATIONS.md). Los PVC locales no dan recuperación de
+PostgreSQL/Redis en otro nodo, y la cola BLPOP no recupera sola un trabajo
+interrumpido.
 
-```bash
-sudo cloud-init status --wait
-chmod 400 ~/labsuser.pem
-tar -xzf ~/vibe-aws.tar.gz
-cd ~/vibe_k8s/vibe
-export KUBECONFIG=~/.kube/config
-kubectl get nodes -o wide
-```
+## 4. Seguridad de la infraestructura
 
-La validación siguiente debe mostrar cuatro nodos Ready. Si falla, revisar
-`sudo tail -n 100 /var/log/cloud-init-output.log` y `sudo journalctl -u k3s`.
+Terraform exige IMDSv2 y cifra los discos; los nodos no tienen puertos de entrada
+públicos. El ELB HTTP público es intencional para la demo. Los buckets se
+configuran con bloqueo de acceso público, SSE-S3 y política solo-TLS (Trivy no
+inspecciona esas llamadas de AWS CLI). Excepciones IaC temporales: `AWS-0053`
+(ELB público) y `AWS-0104` (salida a Internet para paquetes e imágenes, sin
+endpoints privados), ambas con vencimiento el 27 de abril de 2027; al vencer
+vuelven a requerir revisión.
 
-## 3. Inicializar la aplicación (fase posterior a verificar infraestructura)
+## 5. CloudWatch
 
-```bash
-IMAGE_DISTRIBUTION=ssh SSH_PRIVATE_KEY=~/labsuser.pem bash aws/cluster-init.sh RAW_BUCKET_NAME HLS_BUCKET_NAME
-kubectl -n vibe get pods -o wide
-kubectl -n vibe get hpa,scaledobject
-```
-
-El laboratorio comprobó cuatro nodos Ready, la aplicación con S3 real, métricas
-de HPA y KEDA, y ensayos medidos. Ver [DEMONSTRATIONS.md](DEMONSTRATIONS.md) para
-repetir las pruebas y guardar evidencia. Los resultados dependen de la carga y del
-estado del laboratorio; no se garantiza disponibilidad total en cualquier fallo.
-
-Antes de la exposición quedan pendientes: renovación de credenciales S3,
-actualización de ServiceMonitor a los microservicios e instalación de monitoreo
-si se necesita Prometheus/Grafana. El visor consulta kubectl directamente.
-Los PVC locales no proporcionan recuperación de PostgreSQL/Redis en otro nodo;
-la cola BLPOP tampoco recupera automáticamente un trabajo interrumpido.
-
-## 4. CloudWatch
-
-Terraform crea el dashboard `vibe-desarrollo-operations` y alarmas de EC2/Classic
-ELB. Para recibir avisos por email, antes del despliegue en Lab IDE ejecuta:
+Terraform crea el dashboard `vibe-desarrollo-operations` y alarmas de EC2 y ELB.
+Para recibir avisos por correo, antes de desplegar:
 
 ```bash
 export VIBE_ALERT_EMAIL="tu-correo@example.com"
-bash aws/deploy-sandbox.sh
+bash aws/deploy-aws.sh
 ```
 
-Confirma la suscripción SNS desde el correo que envía AWS. Si no configuras
-`VIBE_ALERT_EMAIL`, las alarmas siguen visibles en CloudWatch pero no envían
-notificaciones. El dashboard y el listado de alarmas aparecen al final del
-despliegue. Las métricas del balanceador requieren tráfico para mostrar series.
-Memoria y logs de sistema/pods quedan pendientes porque el rol de EC2 del sandbox
-no se modifica para instalar CloudWatch Agent.
+Confirma la suscripción SNS desde el correo que envía AWS. Las métricas del
+balanceador necesitan tráfico para mostrar series. El rol de los nodos ya incluye
+`CloudWatchAgentServerPolicy`; falta instalar CloudWatch Agent/Fluent Bit para
+memoria y logs de sistema y pods.
 
-## 5. Evidencias y limpieza
+## 6. Evidencias y limpieza
 
-Exportar resultados, capturas y código antes de terminar la sesión. El Sandbox
-elimina los datos y recursos al expirar, incluidos los buckets S3.
-`bash aws/teardown.sh` vacía los buckets de VIBE y elimina su stack.
+Exporta resultados, capturas y código a un lugar fuera de AWS. Los recursos no
+caducan solos: `make aws-down` (`bash aws/destroy-aws.sh`) ejecuta
+`terraform destroy` del entorno desarrollo y conserva los buckets S3.
