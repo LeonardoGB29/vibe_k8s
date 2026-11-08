@@ -26,6 +26,14 @@ module "storage" {
   name_prefix = local.name
 }
 
+module "node_iam" {
+  source = "../../modules/node-iam"
+
+  name_prefix     = local.name
+  bucket_names    = [module.storage.raw_bucket, module.storage.hls_bucket]
+  token_parameter = "/${local.name}/k3s-token"
+}
+
 module "cluster" {
   source = "../../modules/k3s-cluster"
 
@@ -38,7 +46,7 @@ module "cluster" {
   server_instance_type    = var.server_instance_type
   agent_instance_type     = var.agent_instance_type
   agent_count             = var.agent_count
-  instance_profile        = var.instance_profile
+  instance_profile        = module.node_iam.instance_profile_name
   key_name                = var.key_name
   ami_id                  = var.ami_id
 }

@@ -41,20 +41,20 @@ variable "master_username" {
 }
 
 variable "instance_class" {
-  description = "Clase RDS admitida por AWS Academy."
+  description = "Clase RDS pequeña para la demo."
   type        = string
   default     = "db.t3.micro"
 
   validation {
     condition     = contains(["db.t3.micro", "db.t3.small", "db.t3.medium"], var.instance_class)
-    error_message = "Usa una clase pequeña permitida por Learner Lab: db.t3.micro, db.t3.small o db.t3.medium."
+    error_message = "Usa una clase pequeña: db.t3.micro, db.t3.small o db.t3.medium."
   }
 }
 
 variable "engine_version" {
-  description = "Versión PostgreSQL; la predeterminada fue observada en las opciones RDS de us-east-1."
+  description = "Versión PostgreSQL; 16.15 es la más reciente 16.x disponible para db.t3.micro en us-east-2."
   type        = string
-  default     = "16.16"
+  default     = "16.15"
 }
 
 variable "allocated_storage" {
@@ -64,7 +64,7 @@ variable "allocated_storage" {
 
   validation {
     condition     = var.allocated_storage >= 20 && var.allocated_storage <= 100
-    error_message = "Learner Lab permite hasta 100 GB; RDS PostgreSQL requiere al menos 20 GB en esta configuración."
+    error_message = "El almacenamiento debe estar entre 20 y 100 GB (límite de costo de la demo)."
   }
 }
 

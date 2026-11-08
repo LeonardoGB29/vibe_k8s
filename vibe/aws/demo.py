@@ -9,6 +9,7 @@ import os
 import pathlib
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -16,6 +17,8 @@ import urllib.error
 import urllib.request
 import wave
 from datetime import datetime, timezone
+
+REGION = os.environ.get("AWS_DEFAULT_REGION", "us-east-2")
 
 NS = 'vibe'
 OUT = None
@@ -271,8 +274,8 @@ def rolling_test():
     version = datetime.now(timezone.utc).strftime('demo-%Y%m%d%H%M%S')
     image = 'vibe-frontend:' + version
     source = pathlib.Path.home() / 'vibe_k8s/vibe/aws/distribute-ssm.sh'
-    os.environ['IMAGE_BUCKET'] = 'vibe-audio-raw-413718548840'
-    os.environ['AWS_DEFAULT_REGION'] = 'us-east-1'
+    os.environ['IMAGE_BUCKET'] = os.environ.get('IMAGE_BUCKET') or sys.exit('Define IMAGE_BUCKET con el bucket raw (terraform output raw_bucket).')
+    os.environ['AWS_DEFAULT_REGION'] = REGION
     with tempfile.TemporaryDirectory(prefix='vibe-release-') as temp:
         folder = pathlib.Path(temp)
         (folder / 'version.json').write_text(json.dumps({'version': version}))
@@ -309,7 +312,7 @@ def node_test():
     if any(any('persistentVolumeClaim' in v for v in p['spec'].get('volumes', [])) for p in occupants):
         raise RuntimeError('El agente elegido aloja PVC locales; se cancela la caída para conservar el almacenamiento')
     ip = next(a['address'] for a in info['status']['addresses'] if a['type'] == 'InternalIP')
-    result = json.loads(command('aws', 'ec2', 'describe-instances', '--region', 'us-east-1',
+    result = json.loads(command('aws', 'ec2', 'describe-instances', '--region', REGION,
                                '--filters', 'Name=private-ip-address,Values=' + ip, 'Name=instance-state-name,Values=running'))
     instances = [i for reservation in result['Reservations'] for i in reservation['Instances']]
     if len(instances) != 1 or not any(t['Key'] == 'Name' and t['Value'] == 'vibe-' + node for t in instances[0].get('Tags', [])):
@@ -332,7 +335,7 @@ def node_test():
         start = time.monotonic()
         try:
             print('Deteniendo únicamente ' + node + ' durante siete minutos', flush=True)
-            command('aws', 'ec2', 'stop-instances', '--region', 'us-east-1', '--instance-ids', instance)
+            command('aws', 'ec2', 'stop-instances', '--region', REGION, '--instance-ids', instance)
             wait_until(lambda: not is_ready(), 120)
             detected = round(time.monotonic() - start, 3)
             snapshot('node-down')
@@ -354,7 +357,7 @@ def node_test():
         finally:
             print('Restaurando la EC2 del agente', flush=True)
             restarted = time.monotonic()
-            command('aws', 'ec2', 'start-instances', '--region', 'us-east-1', '--instance-ids', instance)
+            command('aws', 'ec2', 'start-instances', '--region', REGION, '--instance-ids', instance)
             wait_until(is_ready, 300)
             restore = round(time.monotonic() - restarted, 3)
             (OUT / 'node-timeline.json').write_text(json.dumps(series, indent=2))

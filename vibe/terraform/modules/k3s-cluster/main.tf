@@ -67,9 +67,8 @@ variable "agent_count" {
 }
 
 variable "instance_profile" {
-  description = "Perfil EC2 precreado por AWS Academy (LabInstanceProfile); el sandbox no permite crear roles IAM"
+  description = "Perfil de instancia EC2 de los nodos (lo crea modules/node-iam)"
   type        = string
-  default     = "LabInstanceProfile"
 }
 
 variable "key_name" {

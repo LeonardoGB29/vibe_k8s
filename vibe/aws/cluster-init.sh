@@ -8,8 +8,7 @@ set -euo pipefail
 RAW_BUCKET="${1:?Indica el bucket RawBucketName del stack}"
 HLS_BUCKET="${2:?Indica el bucket HlsBucketName del stack}"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
-export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
-export IMAGE_DISTRIBUTION="${IMAGE_DISTRIBUTION:-ssm}"
+export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-2}"
 export IMAGE_BUCKET="${IMAGE_BUCKET:-$RAW_BUCKET}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -41,7 +40,8 @@ done
 kubectl -n traefik rollout status deployment/traefik --timeout=300s
 
 echo "=== [3/6] Instalando KEDA (para autoescalado de workers por cola Redis) ==="
-kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.21.0/keda-2.21.0.yaml
+KEDA_VERSION="$(tr -d '[:space:]' < "$REPO_ROOT/k8s/KEDA_VERSION")"  # misma version que el CI
+kubectl apply --server-side -f "https://github.com/kedacore/keda/releases/download/${KEDA_VERSION}/keda-${KEDA_VERSION#v}.yaml"
 kubectl wait --for=condition=Established crd/scaledobjects.keda.sh --timeout=180s
 kubectl -n keda rollout status deployment/keda-operator --timeout=180s
 kubectl -n keda rollout status deployment/keda-metrics-apiserver --timeout=180s
@@ -69,7 +69,7 @@ cd "$REPO_ROOT"
 # Crear namespace si no existe
 kubectl apply -f k8s/base/00-namespace.yaml
 
-# Obtener credenciales temporales de la instancia (LabRole/LabInstanceProfile)
+# Obtener credenciales temporales del rol de la instancia (modules/node-iam)
 # o usar token de sesión si fue provisto
 TOKEN=$(curl -fsS --max-time 5 -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" || true)
 ROLE_NAME=$(curl -fsS --max-time 5 -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/ || true)
@@ -100,9 +100,9 @@ metadata:
   namespace: vibe
 data:
   REDIS_URL: redis://redis:6379/0
-  MINIO_ENDPOINT: s3.us-east-1.amazonaws.com
+  MINIO_ENDPOINT: s3.${AWS_DEFAULT_REGION}.amazonaws.com
   MINIO_SECURE: "true"
-  AWS_REGION: us-east-1
+  AWS_REGION: ${AWS_DEFAULT_REGION}
   BUCKET_RAW: "$RAW_BUCKET"
   BUCKET_HLS: "$HLS_BUCKET"
   QUEUE_NAME: transcode

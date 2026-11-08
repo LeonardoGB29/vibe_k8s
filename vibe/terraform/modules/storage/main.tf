@@ -9,9 +9,9 @@ terraform {
   }
 }
 
-# Los buckets se crean/configuran desde aws/deploy-sandbox.sh con AWS CLI.
-# En AWS Academy, aws_s3_bucket no puede completar su lectura porque el rol
-# voclabs tiene un explicit deny para s3:GetBucketObjectLockConfiguration.
+# Los buckets se crean/configuran desde aws/deploy-aws.sh con AWS CLI.
+# Se hace así para que el mismo script cree el bucket del state antes de que
+# Terraform exista; el proveedor AWS no gestiona estos buckets.
 variable "name_prefix" {
   description = "Prefijo de los buckets (ej. vibe-desarrollo)"
   type        = string

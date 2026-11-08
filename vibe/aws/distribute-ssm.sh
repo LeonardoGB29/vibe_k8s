@@ -1,7 +1,7 @@
 #!/bin/bash
 # Importa imágenes en los agentes sin copiar claves SSH al servidor.
 set -euo pipefail
-export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-1}"
+export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-2}"
 IP_CSV=$(kubectl get nodes -o json | jq -r '[.items[] | select(.metadata.name != "k3s-server") | .status.addresses[] | select(.type == "InternalIP") | .address] | join(",")')
 IDS_JSON=$(aws ec2 describe-instances --filters "Name=private-ip-address,Values=$IP_CSV" Name=instance-state-name,Values=running --query 'Reservations[].Instances[].InstanceId' --output json)
 [[ $(jq 'length' <<< "$IDS_JSON") == 3 ]] || { echo "No se encontraron exactamente tres EC2 agentes" >&2; exit 1; }

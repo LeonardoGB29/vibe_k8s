@@ -1,6 +1,6 @@
 variable "region" {
   type    = string
-  default = "us-east-1"
+  default = "us-east-2"
 }
 
 variable "environment" {
@@ -49,11 +49,6 @@ variable "agent_count" {
   }
 }
 
-variable "instance_profile" {
-  description = "Perfil EC2 precreado por AWS Academy (LabInstanceProfile)"
-  type        = string
-  default     = "LabInstanceProfile"
-}
 
 variable "key_name" {
   description = "Par de claves EC2 (null = sin SSH, acceso por SSM)"

@@ -1,6 +1,5 @@
-# AWS Academy deniega s3:GetBucketObjectLockConfiguration. El proveedor AWS
-# de Terraform consulta esa operación al gestionar aws_s3_bucket; por eso el
-# script de despliegue crea/configura el bucket del state mediante AWS CLI.
+# El bucket del state lo crea aws/init-account.sh (o aws/deploy-aws.sh) con AWS CLI
+# antes de ejecutar Terraform: no puede ser un recurso de este mismo state.
 terraform {
   required_version = ">= 1.10"
 
@@ -26,12 +25,12 @@ provider "aws" {
 
 variable "region" {
   type    = string
-  default = "us-east-1"
+  default = "us-east-2"
 }
 
 data "aws_caller_identity" "current" {}
 
 output "state_bucket" {
-  description = "Nombre del bucket creado/configurado por aws/deploy-sandbox.sh"
+  description = "Nombre del bucket de state creado por aws/init-account.sh"
   value       = "vibe-tfstate-${data.aws_caller_identity.current.account_id}"
 }

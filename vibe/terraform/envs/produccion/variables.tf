@@ -1,18 +1,18 @@
 variable "region" {
-  description = "Región del Learner Lab."
+  description = "Región de la cuenta AWS."
   type        = string
-  default     = "us-east-1"
+  default     = "us-east-2"
 }
 
 variable "instance_class" {
-  description = "Clase RDS PostgreSQL permitida por AWS Academy."
+  description = "Clase RDS PostgreSQL (db.t3.micro cuesta ~0,018 USD/h Single-AZ)."
   type        = string
   default     = "db.t3.micro"
 }
 
 variable "engine_version" {
   type    = string
-  default = "16.16"
+  default = "16.15"
 }
 
 variable "allocated_storage" {

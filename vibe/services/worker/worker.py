@@ -34,7 +34,7 @@ MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "vibeadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "vibesecret123")
 MINIO_SESSION_TOKEN = os.getenv("MINIO_SESSION_TOKEN", "") or None
 MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() == "true"
-AWS_REGION = os.getenv("AWS_REGION", "us-east-1")
+AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
 
 BUCKET_RAW = os.getenv("BUCKET_RAW", "raw")
 BUCKET_HLS = os.getenv("BUCKET_HLS", "hls")

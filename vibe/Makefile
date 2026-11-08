@@ -94,12 +94,12 @@ grafana: ## Port-forward a Grafana (admin / vibe)
 	@echo "http://localhost:3000  usuario: admin  clave: vibe"
 	kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80
 
-# ---------- AWS Academy Sandbox ----------
-aws-up: ## Despliega infraestructura en AWS Academy (CloudFormation)
-	@./aws/setup.sh
+# ---------- AWS ----------
+aws-up: ## Despliega infraestructura en AWS (Terraform)
+	@bash aws/deploy-aws.sh
 
-aws-down: ## Vacia buckets y elimina infraestructura en AWS Academy
-	@./aws/teardown.sh
+aws-down: ## Destruye la infraestructura Terraform de desarrollo (conserva los buckets S3)
+	@bash aws/destroy-aws.sh
 
 # ---------- Datos ----------
 gen-audio: ## Genera 200 audios sintéticos en data/audio

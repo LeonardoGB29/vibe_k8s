@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Un solo comando para desplegar VIBE en AWS Academy Cloud Foundations Sandbox.
+# Un solo comando para desplegar el entorno desarrollo de VIBE (Terraform + k3s). Requiere haber ejecutado antes aws/init-account.sh.
 set -Eeuo pipefail
 
-REGION="${AWS_DEFAULT_REGION:-${AWS_REGION:-us-east-1}}"
+REGION="${AWS_DEFAULT_REGION:-${AWS_REGION:-us-east-2}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIBE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+# shellcheck source=lib-s3.sh
+source "$SCRIPT_DIR/lib-s3.sh"
 REPO_ROOT="$(cd "$VIBE_DIR/.." && pwd)"
 ENV_DIR="$VIBE_DIR/terraform/envs/desarrollo"
 BOOTSTRAP_DIR="$VIBE_DIR/terraform/bootstrap"
@@ -26,7 +28,7 @@ ensure_terraform() {
   command -v terraform >/dev/null 2>&1 && return 0
 
   command -v python3 >/dev/null 2>&1 || die "Se necesita python3 para verificar y extraer Terraform."
-  local version="${TERRAFORM_VERSION:-1.17.1}" arch filename base_url download_dir
+  local version="${TERRAFORM_VERSION:-1.16.6}" arch filename base_url download_dir
   [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "TERRAFORM_VERSION debe tener el formato X.Y.Z."
   [[ "$(uname -s)" == "Linux" ]] || die "La instalacion automatica de Terraform requiere Linux (Lab IDE o CloudShell)."
   case "$(uname -m)" in
@@ -108,35 +110,6 @@ free_local_space() {
   echo "Espacio libre después de limpiar CloudShell: ${after_mib} MiB (se liberaron $((after_mib - before_mib)) MiB)"
 }
 
-ensure_s3_bucket() {
-  local bucket="$1"
-  if aws s3api head-bucket --bucket "$bucket" --region "$REGION" >/dev/null 2>&1; then
-    echo "Reutilizando bucket existente: $bucket"
-  else
-    echo "Creando bucket: $bucket"
-    aws s3api create-bucket --bucket "$bucket" --region "$REGION" >/dev/null
-  fi
-
-  aws s3api put-public-access-block \
-    --bucket "$bucket" \
-    --public-access-block-configuration \
-      BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true \
-    --region "$REGION"
-  aws s3api put-bucket-encryption \
-    --bucket "$bucket" \
-    --server-side-encryption-configuration '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}' \
-    --region "$REGION"
-  aws s3api put-bucket-versioning \
-    --bucket "$bucket" \
-    --versioning-configuration Status=Enabled \
-    --region "$REGION"
-
-  local policy_file
-  policy_file="$(mktemp)"
-  jq -n --arg bucket "$bucket" '{Version:"2012-10-17",Statement:[{Sid:"DenyInsecureTransport",Effect:"Deny",Principal:"*",Action:"s3:*",Resource:[("arn:aws:s3:::"+$bucket),("arn:aws:s3:::"+$bucket+"/*")],Condition:{Bool:{"aws:SecureTransport":"false"}}}]}' > "$policy_file"
-  aws s3api put-bucket-policy --bucket "$bucket" --policy "file://$policy_file" --region "$REGION"
-  rm -f "$policy_file"
-}
 
 for tool in aws jq tar curl; do
   command -v "$tool" >/dev/null 2>&1 || die "No encuentro '$tool'. Ejecuta el script desde Lab IDE con las herramientas instaladas."
@@ -146,7 +119,8 @@ ensure_terraform
 export AWS_DEFAULT_REGION="$REGION"
 ALERT_EMAIL="${VIBE_ALERT_EMAIL:-}"
 export TF_VAR_alert_email="$ALERT_EMAIL"
-aws sts get-caller-identity >/dev/null || die "AWS CLI no tiene credenciales activas. En AWS Academy inicia/reinicia el Lab y espera a que CloudShell reciba credenciales nuevas; el script reutiliza las credenciales de la sesión y no las guarda. Si usas un perfil local, configura AWS_PROFILE antes de ejecutar."
+aws sts get-caller-identity >/dev/null || die "AWS CLI no tiene credenciales activas. Inicia sesión con 'aws login' o configura AWS_PROFILE antes de ejecutar; el script no guarda credenciales."
+export_aws_credentials
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
 
@@ -154,6 +128,7 @@ echo "Cuenta AWS: $ACCOUNT_ID"
 echo "Identidad:  $CALLER_ARN"
 echo "Región:     $REGION"
 echo "Se desplegarán cuatro instancias EC2, un ELB y tres buckets S3."
+echo "Costo aproximado encendido 24/7: ~3,8 USD/día (unos 0,85 USD/día con las EC2 apagadas). Revisa tus créditos antes de continuar."
 read -r -p "Escribe desplegar para continuar: " CONFIRM
 [[ "$CONFIRM" == "desplegar" ]] || die "Despliegue cancelado."
 
@@ -218,7 +193,7 @@ until [[ "$(aws ssm describe-instance-information \
     --filters "Key=InstanceIds,Values=$SERVER_ID" \
     --query 'InstanceInformationList[?PingStatus==`Online`].InstanceId | [0]' \
     --output text 2>/dev/null || true)" == "$SERVER_ID" ]]; do
-  (( SECONDS < DEADLINE )) || die "El servidor no apareció Online en SSM en 15 minutos. Revisa EC2 y Systems Manager en AWS Academy."
+  (( SECONDS < DEADLINE )) || die "El servidor no apareció Online en SSM en 15 minutos. Revisa EC2 y Systems Manager (el rol de los nodos lo crea Terraform: modules/node-iam)."
   echo "Esperando al agente SSM del servidor..."
   sleep 10
 done
@@ -251,10 +226,10 @@ bash aws/cluster-init.sh ${RAW_BUCKET} ${HLS_BUCKET}"
 jq -n \
   --arg id "$SERVER_ID" \
   --arg command "$REMOTE_SCRIPT" \
-  '{InstanceIds:[$id],DocumentName:"AWS-RunShellScript",TimeoutSeconds:3600,Parameters:{commands:[$command],executionTimeout:["3600"]},Comment:"Despliegue VIBE AWS Academy"}' \
+  '{InstanceIds:[$id],DocumentName:"AWS-RunShellScript",TimeoutSeconds:3600,Parameters:{commands:[$command],executionTimeout:["3600"]},Comment:"Despliegue VIBE"}' \
   > "$REQUEST_FILE"
 COMMAND_ID="$(aws ssm send-command --cli-input-json "file://$REQUEST_FILE" --query Command.CommandId --output text --region "$REGION")" \
-  || die "No se pudo iniciar SSM Run Command. Verifica permisos de LabRole para SSM."
+  || die "No se pudo iniciar SSM Run Command. Verifica que el rol de los nodos y tu usuario tengan permisos de SSM."
 echo "Comando SSM: $COMMAND_ID"
 
 DEADLINE=$((SECONDS + 3900))
@@ -292,7 +267,7 @@ if [[ -n "$ALERT_EMAIL" ]]; then
 else
   echo "Alertas: visibles en CloudWatch. Define VIBE_ALERT_EMAIL para recibir avisos por correo."
 fi
-echo "Guarda estos datos y las evidencias antes de que expire el sandbox."
+echo "Guarda estos datos y las evidencias antes de destruir el entorno."
 echo
 echo "Para abrir k8s-web desde Windows, en esta carpeta del repositorio haz doble clic en:"
 echo "  k8s-web/Conectar VIBE AWS.cmd"
