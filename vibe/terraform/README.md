@@ -68,11 +68,14 @@ guardes su salida en Git. Falta automatizar la creación de un rol PostgreSQL
 restringido para la app y su Secret. No se ejecutó `terraform apply` durante
 estos cambios.
 
-Estos wrappers aprovisionan solamente la base RDS. La aplicación sigue desplegada
-por el flujo existente en el namespace `vibe`; todavía hay que crear los overlays
-y el paso de despliegue/Secret para ejecutar los microservicios en namespaces
-staging y producción. La prueba de failover de RDS también queda pendiente
-de ejecutar y registrar.
+Estos wrappers aprovisionan solamente la base RDS. Los overlays Kubernetes
+`staging` y `produccion` despliegan los microservicios en namespaces separados y
+omiten el PostgreSQL local. Antes del despliegue, cada namespace debe tener un
+Secret `vibe-secrets` con la `DATABASE_URL` del usuario PostgreSQL de aplicación
+restringido y las credenciales S3 requeridas. El workflow manual `deploy.yml`
+permite seleccionar el entorno y el SHA; reutiliza el clúster K3s de desarrollo.
+La creación automática del usuario de aplicación/Secret y la prueba de failover
+de RDS todavía quedan pendientes.
 
 ## Decisiones
 
@@ -86,10 +89,13 @@ de ejecutar y registrar.
 
 | Tipo | Nombre | Valor |
 |---|---|---|
-| Secret | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | Credenciales temporales del sandbox; renovarlas cada sesión solo si se ejecutan los workflows `terraform` o `deploy` |
+| Secret | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN` | Credenciales temporales del sandbox; renovarlas por sesión en el Environment usado por `terraform` o `deploy` |
 | Variable | `TF_STATE_BUCKET` | `vibe-tfstate-<ACCOUNT_ID>` |
 
-Los workflows `ci` y `image-publish` no requieren credenciales AWS. También puedes
-ejecutar Terraform directamente desde Lab IDE y reservar Actions para CI. El
-sandbox elimina los recursos al finalizar la sesión; guarda outputs y evidencias
-fuera de AWS antes de que expire.
+Crear los GitHub Environments `desarrollo`, `staging` y `produccion`, con esos
+secretos temporales y la variable `TF_STATE_BUCKET` en cada uno. Los workflows
+`terraform.yml` y `deploy.yml` permiten elegir el entorno; staging/producción
+requieren que desarrollo exista porque comparten su clúster/VPC. Los workflows
+`ci` e `image-publish` no requieren credenciales AWS. El sandbox elimina los
+recursos al finalizar la sesión; guarda outputs y evidencias fuera de AWS antes
+de que expire.

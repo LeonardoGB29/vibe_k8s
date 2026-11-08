@@ -5,6 +5,8 @@ kind: Kustomization
 # aparte (ver `make deploy-ms`).
 resources:
   - ../../base
+  - namespace.yaml
+  - ../../base/20-postgres.yaml
   - config.yaml
   - minio.yaml
   - ingress.yaml

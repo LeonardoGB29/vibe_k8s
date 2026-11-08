@@ -5,6 +5,8 @@ kind: Kustomization
 # temporales, y los crea aws/cluster-init.sh antes de aplicar este overlay.
 resources:
   - ../../base
+  - namespace.yaml
+  - ../../base/20-postgres.yaml
   - ingress.yaml
 
 patches:

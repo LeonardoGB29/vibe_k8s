@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Render overlays
         run: |
-          for env in test desarrollo; do
+          for env in test desarrollo staging produccion; do
             kubectl kustomize k8s/overlays/$env > /tmp/$env.yaml
           done
       - name: Install kubeconform
@@ -29,7 +29,7 @@ jobs:
       - name: Validate schemas
         # KEDA y ServiceMonitor son CRDs sin esquema local
         run: |
-          for env in test desarrollo; do
+          for env in test desarrollo staging produccion; do
             /tmp/kubeconform -strict -summary -ignore-missing-schemas /tmp/$env.yaml
           done
 
@@ -112,7 +112,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [bootstrap, envs/desarrollo]
+        dir: [bootstrap, envs/desarrollo, envs/staging, envs/produccion]
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -159,6 +159,7 @@ jobs:
 
   image-publish:
     name: Publish ${{ matrix.service }} image
+    needs: [manifests, dockerfiles, build, test-kind, terraform, security]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integracion_terraform')
     runs-on: ubuntu-latest
     permissions:
