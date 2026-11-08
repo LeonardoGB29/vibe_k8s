@@ -4,32 +4,15 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-SSH_USER="${SSH_USER:-ec2-user}"
-IMAGE_DISTRIBUTION="${IMAGE_DISTRIBUTION:-ssh}"
-if [[ "$IMAGE_DISTRIBUTION" == ssh ]]; then
-    SSH_PRIVATE_KEY="${SSH_PRIVATE_KEY:?Indica SSH_PRIVATE_KEY con la ruta a labsuser.pem en el servidor}"
-    [[ -r "$SSH_PRIVATE_KEY" ]] || { echo "No se puede leer la clave SSH indicada" >&2; exit 1; }
-    SSH_ARGS=(-i "$SSH_PRIVATE_KEY" -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=10)
-elif [[ "$IMAGE_DISTRIBUTION" == ssm ]]; then
-    : "${IMAGE_BUCKET:?Indica IMAGE_BUCKET para distribuir las imágenes mediante S3}"
-    aws sts get-caller-identity >/dev/null
-else
-    echo "IMAGE_DISTRIBUTION debe ser ssh o ssm" >&2
-    exit 1
-fi
+# Las imagenes se distribuyen a los agentes mediante S3 y SSM Run Command.
+: "${IMAGE_BUCKET:?Indica IMAGE_BUCKET para distribuir las imágenes mediante S3}"
+aws sts get-caller-identity >/dev/null
 AGENT_IPS=$(kubectl get nodes -o json | jq -r '.items[] | select(.metadata.name != "k3s-server") | .status.addresses[] | select(.type == "InternalIP") | .address')
 [[ "$(printf '%s\n' "$AGENT_IPS" | sed '/^$/d' | wc -l | tr -d ' ')" == 3 ]] || {
     echo "Se esperaban exactamente tres agentes; revisa kubectl get nodes" >&2
     exit 1
 }
-if [[ "$IMAGE_DISTRIBUTION" == ssh ]]; then
-    for IP in $AGENT_IPS; do
-        ssh "${SSH_ARGS[@]}" "$SSH_USER@$IP" \
-            "free_mib=\$(df -Pm / | awk 'NR == 2 {print \$4}'); echo 'Espacio libre en agente $IP:' \$free_mib MiB; [ \$free_mib -ge ${VIBE_MIN_AGENT_MIB:-5000} ] || { echo 'Espacio insuficiente en agente $IP; se requieren ${VIBE_MIN_AGENT_MIB:-5000} MiB libres' >&2; exit 1; }; sudo k3s ctr images ls -q >/dev/null"
-    done
-else
-    bash "$SCRIPT_DIR/distribute-ssm.sh" --check
-fi
+bash "$SCRIPT_DIR/distribute-ssm.sh" --check
 
 echo "=== [1/4] Construyendo imagenes Docker de microservicios ==="
 cd "$REPO_ROOT"
@@ -66,19 +49,5 @@ echo "=== [3/4] Importando imagenes a containerd local (k3s server) ==="
 sudo k3s ctr images import "$BUILD_DIR/vibe-images.tar"
 
 echo "=== [4/4] Distribuyendo imagenes a los nodos agentes (workers) ==="
-if [[ "$IMAGE_DISTRIBUTION" == ssm ]]; then
-    bash "$SCRIPT_DIR/distribute-ssm.sh" "$BUILD_DIR/vibe-images.tar"
-    echo "✅ Imágenes importadas mediante S3 y SSM en los tres agentes"
-    exit 0
-fi
-for IP in $AGENT_IPS; do
-    echo "Distribuyendo imagenes a nodo agente en $IP..."
-    ssh "${SSH_ARGS[@]}" "$SSH_USER@$IP" \
-        "free_mib=\$(df -Pm / | awk 'NR == 2 {print \$4}'); echo 'Espacio antes de importar en agente $IP:' \$free_mib MiB; [ \$free_mib -ge ${VIBE_MIN_AGENT_MIB:-5000} ] || { echo 'Espacio insuficiente en agente $IP para importar imágenes' >&2; exit 1; }; sudo k3s ctr images import -" \
-        < "$BUILD_DIR/vibe-images.tar"
-    for IMAGE in $IMAGES; do
-        ssh "${SSH_ARGS[@]}" "$SSH_USER@$IP" "sudo k3s ctr images ls -q" | grep -Fx "docker.io/library/$IMAGE" >/dev/null
-    done
-done
-
-echo "✅ Imagenes construidas y cargadas en todo el cluster con exito!"
+bash "$SCRIPT_DIR/distribute-ssm.sh" "$BUILD_DIR/vibe-images.tar"
+echo "✅ Imágenes construidas y cargadas en todo el cluster mediante S3 y SSM"
