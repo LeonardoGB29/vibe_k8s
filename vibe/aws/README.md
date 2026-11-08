@@ -133,7 +133,24 @@ si se necesita Prometheus/Grafana. El visor consulta kubectl directamente.
 Los PVC locales no proporcionan recuperación de PostgreSQL/Redis en otro nodo;
 la cola BLPOP tampoco recupera automáticamente un trabajo interrumpido.
 
-## 4. Evidencias y limpieza
+## 4. CloudWatch
+
+Terraform crea el dashboard `vibe-desarrollo-operations` y alarmas de EC2/Classic
+ELB. Para recibir avisos por email, antes del despliegue en Lab IDE ejecuta:
+
+```bash
+export VIBE_ALERT_EMAIL="tu-correo@example.com"
+bash aws/deploy-sandbox.sh
+```
+
+Confirma la suscripción SNS desde el correo que envía AWS. Si no configuras
+`VIBE_ALERT_EMAIL`, las alarmas siguen visibles en CloudWatch pero no envían
+notificaciones. El dashboard y el listado de alarmas aparecen al final del
+despliegue. Las métricas del balanceador requieren tráfico para mostrar series.
+Memoria y logs de sistema/pods quedan pendientes porque el rol de EC2 del sandbox
+no se modifica para instalar CloudWatch Agent.
+
+## 5. Evidencias y limpieza
 
 Exportar resultados, capturas y código antes de terminar la sesión. El Sandbox
 elimina los datos y recursos al expirar, incluidos los buckets S3.

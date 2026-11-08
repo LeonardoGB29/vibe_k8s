@@ -66,3 +66,9 @@ variable "ami_id" {
   type        = string
   default     = ""
 }
+
+variable "alert_email" {
+  description = "Correo opcional para alarmas CloudWatch. AWS SNS solicita confirmar la suscripcion."
+  type        = string
+  default     = ""
+}

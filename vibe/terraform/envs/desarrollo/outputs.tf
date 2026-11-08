@@ -24,3 +24,18 @@ output "cluster_init_command" {
   description = "Comando para desplegar la aplicacion dentro del servidor"
   value       = "bash aws/cluster-init.sh ${module.storage.raw_bucket} ${module.storage.hls_bucket}"
 }
+
+output "cloudwatch_dashboard_url" {
+  description = "Dashboard CloudWatch de operacion VIBE"
+  value       = module.monitoring.dashboard_url
+}
+
+output "cloudwatch_alarm_names" {
+  description = "Alarmas EC2 y Classic ELB creadas para VIBE"
+  value       = module.monitoring.alarm_names
+}
+
+output "cloudwatch_alerts_topic_arn" {
+  description = "Topic SNS opcional para alertas por correo"
+  value       = module.monitoring.alerts_topic_arn
+}
