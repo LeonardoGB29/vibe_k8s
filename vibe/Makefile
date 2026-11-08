@@ -95,11 +95,11 @@ grafana: ## Port-forward a Grafana (admin / vibe)
 	kubectl -n monitoring port-forward svc/monitoring-grafana 3000:80
 
 # ---------- AWS ----------
-aws-up: ## Despliega infraestructura en AWS (Terraform)
-	@bash aws/deploy-aws.sh
+aws-up: ## Despliega un entorno en AWS (ENV=desarrollo|staging|produccion)
+	@bash aws/deploy-aws.sh $${ENV:-desarrollo}
 
-aws-down: ## Destruye la infraestructura Terraform de desarrollo (conserva los buckets S3)
-	@bash aws/destroy-aws.sh
+aws-down: ## Destruye la infraestructura Terraform (ENV=desarrollo|staging|produccion; conserva los buckets S3)
+	@bash aws/destroy-aws.sh $${ENV:-desarrollo}
 
 # ---------- Datos ----------
 gen-audio: ## Genera 200 audios sintéticos en data/audio

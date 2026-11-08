@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
-# Elimina la infraestructura Terraform del entorno desarrollo (par de deploy-aws.sh).
+# Elimina la infraestructura Terraform de un entorno: bash aws/destroy-aws.sh [desarrollo|staging|produccion] (par de deploy-aws.sh).
 # Terraform pide confirmacion interactiva. Los buckets S3 (state y audio) los crea
 # deploy-aws.sh con AWS CLI y NO se borran aqui: vacialos/eliminalos a mano
 # si de verdad quieres limpiar la cuenta.
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ENV_DIR="$SCRIPT_DIR/../terraform/envs/desarrollo"
+ENVIRONMENT="${1:-${VIBE_ENVIRONMENT:-desarrollo}}"
+case "$ENVIRONMENT" in desarrollo|staging|produccion) ;; *) echo "ERROR: entorno debe ser desarrollo, staging o produccion." >&2; exit 2 ;; esac
+ENV_DIR="$SCRIPT_DIR/../terraform/envs/$ENVIRONMENT"
 REGION="${AWS_DEFAULT_REGION:-${AWS_REGION:-us-east-2}}"
 
 # shellcheck source=lib-s3.sh
@@ -22,4 +24,8 @@ if [[ ! -f backend.hcl ]]; then
 fi
 terraform init -backend-config=backend.hcl -lockfile=readonly -input=false
 terraform destroy -var="region=$REGION"
-echo "Infraestructura destruida. Los buckets S3 se conservan (ver cabecera del script)."
+echo "Infraestructura de $ENVIRONMENT destruida. Los buckets S3 se conservan (ver cabecera del script)."
+# El parametro con la DATABASE_URL (staging/produccion) lo crea deploy-aws.sh fuera de Terraform.
+if [[ "$ENVIRONMENT" != "desarrollo" ]]; then
+  aws ssm delete-parameter --name "/vibe-${ENVIRONMENT}/database-url" --region "$REGION" >/dev/null 2>&1 || true
+fi

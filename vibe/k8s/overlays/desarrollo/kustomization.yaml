@@ -15,4 +15,25 @@ patches:
     patch: |-
       - op: replace
         path: /spec/maxReplicaCount
-        value: 8
+        value: 2
+  # Perfil basico para pruebas de codigo: 1 servidor + 1 agente, sin replicas de sobra.
+  - target:
+      group: apps
+      version: v1
+      kind: Deployment
+      name: "frontend|catalog-api|upload-api|stream-api"
+    patch: |-
+      - op: replace
+        path: /spec/replicas
+        value: 1
+  - target:
+      group: autoscaling
+      version: v2
+      kind: HorizontalPodAutoscaler
+    patch: |-
+      - op: replace
+        path: /spec/minReplicas
+        value: 1
+      - op: replace
+        path: /spec/maxReplicas
+        value: 2

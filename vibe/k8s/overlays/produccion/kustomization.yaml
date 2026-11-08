@@ -31,3 +31,10 @@ patches:
       kind: StatefulSet
       metadata:
         name: postgres
+  - target:
+      kind: ScaledObject
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicaCount
+        value: 8

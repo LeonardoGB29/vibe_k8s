@@ -3,11 +3,12 @@
 set -euo pipefail
 export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-2}"
 IP_CSV=$(kubectl get nodes -o json | jq -r '[.items[] | select(.metadata.name != "k3s-server") | .status.addresses[] | select(.type == "InternalIP") | .address] | join(",")')
+AGENT_COUNT=$(jq -Rr "if . == \"\" then 0 else (split(\",\") | length) end" <<< "$IP_CSV")
 IDS_JSON=$(aws ec2 describe-instances --filters "Name=private-ip-address,Values=$IP_CSV" Name=instance-state-name,Values=running --query 'Reservations[].Instances[].InstanceId' --output json)
-[[ $(jq 'length' <<< "$IDS_JSON") == 3 ]] || { echo "No se encontraron exactamente tres EC2 agentes" >&2; exit 1; }
+[[ "$(jq length <<< "$IDS_JSON")" == "$AGENT_COUNT" && "$AGENT_COUNT" -ge 1 ]] || { echo "Se esperaban $AGENT_COUNT EC2 agentes segun kubectl y EC2 encontro $(jq length <<< "$IDS_JSON")" >&2; exit 1; }
 IDS_CSV=$(jq -r 'join(",")' <<< "$IDS_JSON")
 ONLINE=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$IDS_CSV" --query 'InstanceInformationList[?PingStatus==`Online`].InstanceId' --output json)
-[[ $(jq 'length' <<< "$ONLINE") == 3 ]] || { echo "Los tres agentes deben estar Online en SSM" >&2; exit 1; }
+[[ "$(jq length <<< "$ONLINE")" == "$AGENT_COUNT" ]] || { echo "Los $AGENT_COUNT agentes deben estar Online en SSM" >&2; exit 1; }
 WORK_DIR=$(mktemp -d /tmp/vibe-ssm.XXXXXX)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
@@ -26,7 +27,7 @@ while true; do
         jq -r '.CommandInvocations[] | [.InstanceId, .Status, (.CommandPlugins[0].Output // "")] | @tsv' <<< "$PREFLIGHT" >&2
         exit 1
     fi
-    if jq -e '.CommandInvocations | length == 3 and all(.Status == "Success")' <<< "$PREFLIGHT" >/dev/null; then
+    if jq -e --argjson n "$AGENT_COUNT" '.CommandInvocations | length == $n and all(.Status == "Success")' <<< "$PREFLIGHT" >/dev/null; then
         jq -r '.CommandInvocations[] | .CommandPlugins[0].Output // empty' <<< "$PREFLIGHT"
         break
     fi
@@ -65,7 +66,7 @@ os.chmod(sys.argv[1], 0o600)
 PY
 unset VIBE_DOWNLOAD_URL DOWNLOAD_URL
 COMMAND_ID=$(aws ssm send-command --document-name AWS-RunShellScript --targets "Key=InstanceIds,Values=$IDS_CSV" --parameters "file://$WORK_DIR/parameters.json" --query Command.CommandId --output text)
-echo "Importación enviada a los tres agentes. Comando SSM: $COMMAND_ID"
+echo "Importación enviada a los $AGENT_COUNT agentes. Comando SSM: $COMMAND_ID"
 DEADLINE=$((SECONDS + 1200))
 while true; do
     INVOCATIONS=$(aws ssm list-command-invocations --command-id "$COMMAND_ID" --output json)
@@ -73,7 +74,7 @@ while true; do
         echo "Falló la importación; revisa el comando $COMMAND_ID en SSM Run Command" >&2
         exit 1
     fi
-    if jq -e '.CommandInvocations | length == 3 and all(.Status == "Success")' <<< "$INVOCATIONS" >/dev/null; then
+    if jq -e --argjson n "$AGENT_COUNT" '.CommandInvocations | length == $n and all(.Status == "Success")' <<< "$INVOCATIONS" >/dev/null; then
         break
     fi
     if (( SECONDS >= DEADLINE )); then

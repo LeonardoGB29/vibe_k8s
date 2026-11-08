@@ -31,3 +31,20 @@ patches:
       kind: StatefulSet
       metadata:
         name: postgres
+  # Pruebas de carga: mantiene 2 replicas minimas como produccion, pero con techo
+  # bajo para caber en 1 servidor + 2 agentes (6 vCPU).
+  - target:
+      group: autoscaling
+      version: v2
+      kind: HorizontalPodAutoscaler
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicas
+        value: 5
+  - target:
+      kind: ScaledObject
+      name: worker
+    patch: |-
+      - op: replace
+        path: /spec/maxReplicaCount
+        value: 5

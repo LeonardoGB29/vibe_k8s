@@ -46,17 +46,11 @@ if ! kubectl -n "$NAMESPACE" get secret vibe-secrets -o jsonpath='{.data.DATABAS
   exit 1
 fi
 
-# Los entornos comparten los buckets creados por desarrollo. Copiar únicamente
-# la configuración no secreta de S3/Redis; las credenciales y DATABASE_URL no
-# se copian entre entornos.
-if [[ "$TARGET_ENVIRONMENT" != "desarrollo" ]] && ! kubectl -n "$NAMESPACE" get configmap vibe-config >/dev/null 2>&1; then
-  if ! kubectl -n vibe get configmap vibe-config -o json | jq --arg namespace "$NAMESPACE" '
-    del(.metadata.uid, .metadata.resourceVersion, .metadata.creationTimestamp, .metadata.managedFields)
-    | .metadata.namespace = $namespace
-  ' | kubectl apply -f -; then
-    echo "ERROR: falta vibe-config en $NAMESPACE y no se pudo copiar desde vibe." >&2
-    exit 1
-  fi
+# Cada entorno tiene su propio clúster, buckets y RDS: vibe-config y vibe-secrets
+# los crea aws/cluster-init.sh (vía aws/deploy-aws.sh <entorno>) en ese clúster.
+if ! kubectl -n "$NAMESPACE" get configmap vibe-config >/dev/null 2>&1; then
+  echo "ERROR: falta vibe-config en $NAMESPACE. Inicializa el clúster con: bash aws/deploy-aws.sh $TARGET_ENVIRONMENT" >&2
+  exit 1
 fi
 
 SERVICES=(frontend catalog-api upload-api stream-api worker)

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Un solo comando para desplegar el entorno desarrollo de VIBE (Terraform + k3s). Requiere haber ejecutado antes aws/init-account.sh.
+# Despliega un entorno de VIBE (Terraform + k3s): bash aws/deploy-aws.sh [desarrollo|staging|produccion] (por defecto desarrollo). Cada entorno tiene su propio clúster. Requiere haber ejecutado antes aws/init-account.sh.
 set -Eeuo pipefail
 
 REGION="${AWS_DEFAULT_REGION:-${AWS_REGION:-us-east-2}}"
@@ -8,7 +8,9 @@ VIBE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 # shellcheck source=lib-s3.sh
 source "$SCRIPT_DIR/lib-s3.sh"
 REPO_ROOT="$(cd "$VIBE_DIR/.." && pwd)"
-ENV_DIR="$VIBE_DIR/terraform/envs/desarrollo"
+ENVIRONMENT="${1:-${VIBE_ENVIRONMENT:-desarrollo}}"
+case "$ENVIRONMENT" in desarrollo|staging|produccion) ;; *) echo "ERROR: entorno debe ser desarrollo, staging o produccion." >&2; exit 2 ;; esac
+ENV_DIR="$VIBE_DIR/terraform/envs/$ENVIRONMENT"
 BOOTSTRAP_DIR="$VIBE_DIR/terraform/bootstrap"
 WORK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/vibe-deploy.XXXXXX")"
 ARCHIVE="$WORK_DIR/vibe-aws.tar.gz"
@@ -127,8 +129,9 @@ CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
 echo "Cuenta AWS: $ACCOUNT_ID"
 echo "Identidad:  $CALLER_ARN"
 echo "Región:     $REGION"
-echo "Se desplegarán cuatro instancias EC2, un ELB y tres buckets S3."
-echo "Costo aproximado encendido 24/7: ~3,8 USD/día (unos 0,85 USD/día con las EC2 apagadas). Revisa tus créditos antes de continuar."
+echo "Entorno:    $ENVIRONMENT (clúster k3s propio)"
+echo "Se desplegarán las instancias EC2 del clúster, un ELB y los buckets S3 del entorno$( [[ "$ENVIRONMENT" == desarrollo ]] && echo . || echo " más un RDS PostgreSQL.")"
+echo "Costo aproximado encendido 24/7: ~2 a 4 USD/día según el entorno (unos 0,85 USD/día con las EC2 apagadas). Revisa tus créditos antes de continuar."
 read -r -p "Escribe desplegar para continuar: " CONFIRM
 [[ "$CONFIRM" == "desplegar" ]] || die "Despliegue cancelado."
 
@@ -138,8 +141,8 @@ require_free_space "$ENV_DIR" "${VIBE_MIN_LOCAL_MIB:-700}" "CloudShell"
 
 echo "=== 1/6 Creando/configurando los buckets con AWS CLI ==="
 STATE_BUCKET="vibe-tfstate-${ACCOUNT_ID}"
-RAW_BUCKET="vibe-desarrollo-audio-raw-${ACCOUNT_ID}"
-HLS_BUCKET="vibe-desarrollo-audio-hls-${ACCOUNT_ID}"
+RAW_BUCKET="vibe-${ENVIRONMENT}-audio-raw-${ACCOUNT_ID}"
+HLS_BUCKET="vibe-${ENVIRONMENT}-audio-hls-${ACCOUNT_ID}"
 ensure_s3_bucket "$STATE_BUCKET"
 ensure_s3_bucket "$RAW_BUCKET"
 ensure_s3_bucket "$HLS_BUCKET"
@@ -151,13 +154,13 @@ terraform init -backend-config=backend.hcl -lockfile=readonly
 # Recuperar el caso de un apply interrumpido que dejo el parametro SSM creado
 # en AWS pero fuera del state. Solo es seguro importarlo si no quedan nodos que
 # dependan del token actual; con nodos existentes se detiene sin rotarlo.
-TOKEN_PARAMETER="/vibe-desarrollo/k3s-token"
+TOKEN_PARAMETER="/vibe-${ENVIRONMENT}/k3s-token"
 TOKEN_RESOURCE="module.cluster.aws_ssm_parameter.k3s_token"
 TERRAFORM_STATE="$(terraform state list)" || die "No pude leer el state Terraform; no continuare con una importacion automatica."
 if ! grep -Fxq "$TOKEN_RESOURCE" <<< "$TERRAFORM_STATE"; then
   if aws ssm get-parameter --name "$TOKEN_PARAMETER" --region "$REGION" >/dev/null 2>&1; then
     EXISTING_NODES="$(aws ec2 describe-instances \
-      --filters 'Name=tag:Name,Values=vibe-desarrollo-k3s-*' \
+      --filters "Name=tag:Name,Values=vibe-${ENVIRONMENT}-k3s-*" \
                 'Name=instance-state-name,Values=pending,running,stopping,stopped' \
       --query 'length(Reservations[].Instances[])' --output text --region "$REGION")"
     [[ "$EXISTING_NODES" =~ ^[0-9]+$ ]] || die "No pude comprobar si hay nodos que usen el token SSM existente."
@@ -177,6 +180,24 @@ terraform apply -auto-approve "$TF_PLAN"
 
 SERVER_ID="$(terraform output -raw server_instance_id)"
 ELB_URL="$(terraform output -raw elb_url)"
+EXPECTED_NODES="$(aws ec2 describe-instances \
+  --filters "Name=tag:Name,Values=vibe-${ENVIRONMENT}-k3s-*" \
+            'Name=instance-state-name,Values=pending,running' \
+  --query 'length(Reservations[].Instances[])' --output text --region "$REGION")"
+[[ "$EXPECTED_NODES" =~ ^[1-9][0-9]*$ ]] || die "No pude contar los nodos k3s de $ENVIRONMENT."
+
+if [[ "$ENVIRONMENT" != "desarrollo" ]]; then
+  # El RDS de este entorno reemplaza al PostgreSQL local. La URL se guarda como
+  # SecureString en SSM (el rol de los nodos solo puede leer ese parametro) en vez de
+  # viajar en el texto del comando SSM, que queda en el historial de Run Command.
+  # AVISO: usa el usuario administrador de RDS. Falta crear un rol PostgreSQL restringido
+  # para la aplicacion (pendiente documentado en terraform/README.md).
+  DB_URL="postgresql+psycopg://$(terraform output -raw db_username):$(terraform output -raw db_password)@$(terraform output -raw db_address):$(terraform output -raw db_port)/$(terraform output -raw db_name)"
+  aws ssm put-parameter --name "/vibe-${ENVIRONMENT}/database-url" --type SecureString \
+    --value "$DB_URL" --overwrite --region "$REGION" >/dev/null
+  unset DB_URL
+  echo "DATABASE_URL de $ENVIRONMENT guardada en SSM: /vibe-${ENVIRONMENT}/database-url"
+fi
 
 echo "=== 3/6 Empaquetando y subiendo la aplicación ==="
 tar -czf "$ARCHIVE" \
@@ -222,6 +243,7 @@ tar -xzf /home/ec2-user/vibe-aws.tar.gz -C /home/ec2-user
 rm -f /home/ec2-user/vibe-aws.tar.gz
 cd /home/ec2-user/vibe_k8s/vibe
 export KUBECONFIG=/home/ec2-user/.kube/config
+export VIBE_ENVIRONMENT=${ENVIRONMENT} VIBE_EXPECTED_NODES=${EXPECTED_NODES}
 bash aws/cluster-init.sh ${RAW_BUCKET} ${HLS_BUCKET}"
 jq -n \
   --arg id "$SERVER_ID" \

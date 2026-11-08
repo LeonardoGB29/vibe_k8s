@@ -8,10 +8,13 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 : "${IMAGE_BUCKET:?Indica IMAGE_BUCKET para distribuir las imágenes mediante S3}"
 aws sts get-caller-identity >/dev/null
 AGENT_IPS=$(kubectl get nodes -o json | jq -r '.items[] | select(.metadata.name != "k3s-server") | .status.addresses[] | select(.type == "InternalIP") | .address')
-[[ "$(printf '%s\n' "$AGENT_IPS" | sed '/^$/d' | wc -l | tr -d ' ')" == 3 ]] || {
-    echo "Se esperaban exactamente tres agentes; revisa kubectl get nodes" >&2
+# El numero de agentes depende del entorno (desarrollo 1, staging 2, produccion 3 por defecto).
+AGENT_COUNT="$(printf '%s\n' "$AGENT_IPS" | sed '/^$/d' | wc -l | tr -d ' ')"
+(( AGENT_COUNT >= 1 )) || {
+    echo "No hay nodos agentes en el cluster; revisa kubectl get nodes" >&2
     exit 1
 }
+echo "Agentes del cluster: $AGENT_COUNT"
 bash "$SCRIPT_DIR/distribute-ssm.sh" --check
 
 echo "=== [1/4] Construyendo imagenes Docker de microservicios ==="

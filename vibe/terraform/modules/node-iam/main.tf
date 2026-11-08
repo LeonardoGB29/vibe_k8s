@@ -27,6 +27,12 @@ variable "token_parameter" {
   type        = string
 }
 
+variable "extra_parameters" {
+  description = "Otros parametros SSM de solo lectura (ej. la DATABASE_URL del RDS del entorno)"
+  type        = list(string)
+  default     = []
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -59,9 +65,12 @@ resource "aws_iam_role_policy_attachment" "cloudwatch_agent" {
 
 data "aws_iam_policy_document" "node" {
   statement {
-    sid       = "ReadK3sToken"
-    actions   = ["ssm:GetParameter"]
-    resources = ["arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${var.token_parameter}"]
+    sid     = "ReadK3sToken"
+    actions = ["ssm:GetParameter"]
+    resources = [
+      for p in concat([var.token_parameter], var.extra_parameters) :
+      "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${p}"
+    ]
   }
 
   statement {

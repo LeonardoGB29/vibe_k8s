@@ -26,3 +26,24 @@ output "db_password" {
   value     = module.postgres.master_password
   sensitive = true
 }
+
+output "elb_url" {
+  description = "URL publica de la aplicacion"
+  value       = module.cluster.elb_url
+}
+
+output "raw_bucket" {
+  value = module.storage.raw_bucket
+}
+
+output "hls_bucket" {
+  value = module.storage.hls_bucket
+}
+
+output "server_instance_id" {
+  value = module.cluster.server_instance_id
+}
+
+output "cloudwatch_dashboard_url" {
+  value = module.monitoring.dashboard_url
+}

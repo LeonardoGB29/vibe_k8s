@@ -41,7 +41,7 @@ variable "agent_instance_type" {
 
 variable "agent_count" {
   type    = number
-  default = 3
+  default = 1
 
   validation {
     condition     = var.agent_count >= 1 && var.agent_count <= 6

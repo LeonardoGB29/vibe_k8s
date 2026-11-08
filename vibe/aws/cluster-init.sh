@@ -11,17 +11,27 @@ export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-2}"
 export IMAGE_BUCKET="${IMAGE_BUCKET:-$RAW_BUCKET}"
 
+# Entorno que se esta inicializando (cada uno tiene su propio clúster).
+VIBE_ENVIRONMENT="${VIBE_ENVIRONMENT:-desarrollo}"
+VIBE_EXPECTED_NODES="${VIBE_EXPECTED_NODES:-4}"
+case "$VIBE_ENVIRONMENT" in
+  desarrollo) NAMESPACE=vibe ;;
+  staging) NAMESPACE=vibe-staging ;;
+  produccion) NAMESPACE=vibe-produccion ;;
+  *) echo "VIBE_ENVIRONMENT debe ser desarrollo, staging o produccion" >&2; exit 2 ;;
+esac
+
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "=== [1/6] Esperando que los nodos del cluster estén Ready ==="
 DEADLINE=$((SECONDS + 600))
-until kubectl get nodes -o json 2>/dev/null | jq -e '[.items[] | select(.status.conditions[] | .type == "Ready" and .status == "True")] | length == 4' >/dev/null; do
+until kubectl get nodes -o json 2>/dev/null | jq -e '[.items[] | select(.status.conditions[] | .type == "Ready" and .status == "True")] | length == '"$VIBE_EXPECTED_NODES" >/dev/null; do
     if (( SECONDS >= DEADLINE )); then
-        echo "No llegaron a estar Ready los cuatro nodos en 10 minutos" >&2
+        echo "No llegaron a estar Ready los $VIBE_EXPECTED_NODES nodos en 10 minutos" >&2
         exit 1
     fi
-    echo "Esperando los cuatro nodos Ready..."
+    echo "Esperando los $VIBE_EXPECTED_NODES nodos Ready..."
     sleep 5
 done
 kubectl get nodes -o wide
@@ -67,7 +77,7 @@ echo "=== [5/6] Configurando variables de entorno para AWS S3 ==="
 cd "$REPO_ROOT"
 
 # Crear namespace si no existe
-kubectl apply -f k8s/base/00-namespace.yaml
+kubectl apply -f "k8s/overlays/$VIBE_ENVIRONMENT/namespace.yaml"
 
 # Obtener credenciales temporales del rol de la instancia (modules/node-iam)
 # o usar token de sesión si fue provisto
@@ -87,17 +97,25 @@ else
 fi
 
 # Generar ConfigMap y Secret para S3
-if kubectl -n vibe get secret vibe-secrets >/dev/null 2>&1; then
-    POSTGRES_PASSWORD="$(kubectl -n vibe get secret vibe-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 --decode)"
+if kubectl -n "$NAMESPACE" get secret vibe-secrets >/dev/null 2>&1; then
+    POSTGRES_PASSWORD="$(kubectl -n "$NAMESPACE" get secret vibe-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 --decode)"
 else
     POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(openssl rand -hex 24)}"
+fi
+if [ "$VIBE_ENVIRONMENT" = "desarrollo" ]; then
+    DATABASE_URL="postgresql+psycopg://vibe:${POSTGRES_PASSWORD}@postgres:5432/vibe"
+else
+    # Staging/produccion usan el RDS de su entorno: deploy-aws.sh dejo la URL en SSM.
+    DATABASE_URL="$(aws ssm get-parameter --name "/vibe-${VIBE_ENVIRONMENT}/database-url" \
+        --with-decryption --query Parameter.Value --output text)"
+    [ -n "$DATABASE_URL" ] || { echo "Falta /vibe-${VIBE_ENVIRONMENT}/database-url en SSM" >&2; exit 1; }
 fi
 cat <<EOF | kubectl apply -f -
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: vibe-config
-  namespace: vibe
+  namespace: ${NAMESPACE}
 data:
   REDIS_URL: redis://redis:6379/0
   MINIO_ENDPOINT: s3.${AWS_DEFAULT_REGION}.amazonaws.com
@@ -113,37 +131,39 @@ apiVersion: v1
 kind: Secret
 metadata:
   name: vibe-secrets
-  namespace: vibe
+  namespace: ${NAMESPACE}
 type: Opaque
 stringData:
   POSTGRES_USER: vibe
   POSTGRES_PASSWORD: "$POSTGRES_PASSWORD"
   POSTGRES_DB: vibe
-  DATABASE_URL: "postgresql+psycopg://vibe:${POSTGRES_PASSWORD}@postgres:5432/vibe"
+  DATABASE_URL: "${DATABASE_URL}"
   MINIO_ACCESS_KEY: "$AWS_AK"
   MINIO_SECRET_KEY: "$AWS_SK"
   MINIO_SESSION_TOKEN: "$AWS_ST"
 EOF
 
-echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios (overlay desarrollo) ==="
-kubectl apply -k k8s/overlays/desarrollo
+echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios (overlay $VIBE_ENVIRONMENT) ==="
+kubectl apply -k "k8s/overlays/$VIBE_ENVIRONMENT"
 
 echo "Esperando que Postgres y Redis esten listos..."
-kubectl rollout status statefulset/postgres -n vibe --timeout=120s
-kubectl rollout status deployment/redis -n vibe --timeout=60s
+if [ "$VIBE_ENVIRONMENT" = "desarrollo" ]; then
+    kubectl rollout status statefulset/postgres -n "$NAMESPACE" --timeout=120s
+fi
+kubectl rollout status deployment/redis -n "$NAMESPACE" --timeout=60s
 
 echo "Esperando que todos los microservicios inicien..."
-kubectl rollout status deployment/frontend -n vibe --timeout=120s
-kubectl rollout status deployment/catalog-api -n vibe --timeout=120s
-kubectl rollout status deployment/upload-api -n vibe --timeout=120s
-kubectl rollout status deployment/stream-api -n vibe --timeout=120s
-kubectl rollout status deployment/worker -n vibe --timeout=120s
+kubectl rollout status deployment/frontend -n "$NAMESPACE" --timeout=120s
+kubectl rollout status deployment/catalog-api -n "$NAMESPACE" --timeout=120s
+kubectl rollout status deployment/upload-api -n "$NAMESPACE" --timeout=120s
+kubectl rollout status deployment/stream-api -n "$NAMESPACE" --timeout=120s
+kubectl rollout status deployment/worker -n "$NAMESPACE" --timeout=120s
 
 echo "=========================================================="
 echo " 🎉 VIBE Microservicios desplegados exitosamente en AWS!"
 echo "=========================================================="
-kubectl get pods -n vibe -o wide
+kubectl get pods -n "$NAMESPACE" -o wide
 echo ""
-kubectl get services -n vibe -o wide
+kubectl get services -n "$NAMESPACE" -o wide
 echo ""
-kubectl get ingress -n vibe
+kubectl get ingress -n "$NAMESPACE"
