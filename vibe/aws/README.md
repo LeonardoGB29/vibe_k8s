@@ -61,9 +61,10 @@ Terraform exige IMDSv2 y cifra los discos; los nodos no tienen puertos de entrad
 públicos. El ELB HTTP público es intencional para la demo. Los buckets se
 configuran con bloqueo de acceso público, SSE-S3 y política solo-TLS (Trivy no
 inspecciona esas llamadas de AWS CLI). Excepciones IaC temporales: `AWS-0053`
-(ELB público) y `AWS-0104` (salida a Internet para paquetes e imágenes, sin
-endpoints privados), ambas con vencimiento el 27 de abril de 2027; al vencer
-vuelven a requerir revisión.
+(ELB público), `AWS-0104` (salida a Internet para paquetes e imágenes, sin
+endpoints privados) y `AWS-0095` (tema SNS del guardián de créditos sin cifrar:
+solo lleva avisos de saldo y CloudWatch no puede publicar con la clave gestionada),
+todas con vencimiento el 27 de abril de 2027; al vencer vuelven a requerir revisión.
 
 ## 5. CloudWatch
 

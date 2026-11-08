@@ -11,6 +11,11 @@ data "archive_file" "guard" {
   output_path = "${path.module}/.build/credit_guard.zip"
 }
 
+# Excepción temporal AWS-0095: el tema solo lleva avisos de saldo y nombres de alarma
+# (sin datos sensibles). Con la clave gestionada alias/aws/sns las alarmas de CloudWatch
+# no pueden publicar (el aviso "el guardián falló" dejaría de llegar) y una clave KMS
+# propia cuesta ~1 USD/mes.
+#trivy:ignore:AVD-AWS-0095:exp:2027-04-27
 resource "aws_sns_topic" "guard" {
   name = "${local.guard_name}-alerts"
 }
