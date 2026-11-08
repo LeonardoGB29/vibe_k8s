@@ -222,9 +222,11 @@ jobs:
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
 
   # ---------- Entrega continua ----------
-  # Se activa con la variable de repositorio AUTO_DEPLOY=true (cuando el cluster de
-  # desarrollo existe y esta encendido). El mismo SHA que paso el CI y se publico
-  # en GHCR es el que se promueve: develop -> desarrollo; main -> staging -> produccion.
+  # Solo desarrollo se despliega solo: cada push a develop que pasa el CI y publica sus
+  # imagenes se despliega con ese mismo SHA (variable de repositorio AUTO_DEPLOY=true, cuando
+  # el cluster de desarrollo existe y esta encendido). Staging y produccion se despliegan a
+  # mano (Actions > deploy > Run workflow, con el SHA y el entorno) y piden la aprobacion
+  # de los "Required reviewers" de su Environment.
   deploy-desarrollo:
     name: Desplegar en desarrollo
     needs: [image-publish]
@@ -236,29 +238,3 @@ jobs:
     with:
       commit_sha: ${{ github.sha }}
       target_environment: desarrollo
-
-  deploy-staging:
-    name: Desplegar en staging
-    needs: [image-publish]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AUTO_DEPLOY == 'true'
-    permissions:
-      contents: read
-      packages: read
-    uses: ./.github/workflows/deploy.yml
-    with:
-      commit_sha: ${{ github.sha }}
-      target_environment: staging
-
-  # Configura "Required reviewers" en el Environment produccion: el job espera ahi
-  # la aprobacion de una persona antes de desplegar.
-  deploy-produccion:
-    name: Desplegar en producción
-    needs: [deploy-staging]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AUTO_DEPLOY == 'true'
-    permissions:
-      contents: read
-      packages: read
-    uses: ./.github/workflows/deploy.yml
-    with:
-      commit_sha: ${{ github.sha }}
-      target_environment: produccion

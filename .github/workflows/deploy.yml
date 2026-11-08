@@ -1,7 +1,7 @@
 name: deploy
 
-# Despliega en el cluster k3s de desarrollo (staging y produccion comparten ese
-# cluster, en namespaces distintos). Autenticacion con la clave del usuario IAM
+# Despliega en el cluster k3s del entorno elegido (cada entorno tiene el suyo: tag
+# vibe-<entorno>-k3s-server, creado por terraform/envs/<entorno>). Autenticacion con la clave del usuario IAM
 # github-vibe-deploy (permisos minimos; el proyecto prohibe OIDC). Requiere en cada
 # Environment los secretos AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY y (opcional) la
 # variable AWS_REGION; ver vibe/terraform/README.md.
@@ -34,9 +34,9 @@ permissions:
   contents: read
   packages: read
 
-# Los tres entornos comparten el mismo cluster k3s: un solo despliegue a la vez.
+# Un despliegue a la vez por entorno (cada entorno tiene su propio cluster).
 concurrency:
-  group: deploy-cluster
+  group: deploy-${{ inputs.target_environment }}
   cancel-in-progress: false
 
 jobs:
@@ -45,6 +45,7 @@ jobs:
     environment: ${{ inputs.target_environment }}
     env:
       COMMIT_SHA: ${{ inputs.commit_sha }}
+      TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
       # El tag que publica ci.yml (docker/metadata-action type=sha,format=long)
       # lleva el prefijo "sha-"; el commit de Git no.
       IMAGE_TAG: sha-${{ inputs.commit_sha }}
@@ -83,10 +84,10 @@ jobs:
         run: |
           account=$(aws sts get-caller-identity --query Account --output text)
           id=$(aws ec2 describe-instances \
-            --filters "Name=tag:Name,Values=vibe-desarrollo-k3s-server" "Name=instance-state-name,Values=running" \
+            --filters "Name=tag:Name,Values=vibe-${TARGET_ENVIRONMENT}-k3s-server" "Name=instance-state-name,Values=running" \
             --query 'Reservations[0].Instances[0].InstanceId' --output text)
           if [[ "$id" == "None" || -z "$id" ]]; then
-            echo "::error::El servidor k3s de desarrollo no esta encendido. Aplica terraform (desarrollo) o enciende las EC2 (puede haberlas pausado el guardian de creditos)."
+            echo "::error::El servidor k3s de ${TARGET_ENVIRONMENT} no esta encendido. Despliega el entorno con aws/deploy-aws.sh ${TARGET_ENVIRONMENT} o enciende las EC2 (puede haberlas pausado el guardian de creditos)."
             exit 1
           fi
           ping=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$id" \
@@ -96,7 +97,7 @@ jobs:
             exit 1
           fi
           echo "id=$id" >> "$GITHUB_OUTPUT"
-          echo "bucket=vibe-desarrollo-audio-raw-${account}" >> "$GITHUB_OUTPUT"
+          echo "bucket=vibe-${TARGET_ENVIRONMENT}-audio-raw-${account}" >> "$GITHUB_OUTPUT"
       - name: Deploy with SSM
         env:
           INSTANCE_ID: ${{ steps.server.outputs.id }}
@@ -119,10 +120,9 @@ jobs:
           echo "$invocation" | jq -r '"Estado: " + .Status + "\n--- STDOUT ---\n" + .StandardOutputContent + "\n--- STDERR ---\n" + .StandardErrorContent'
           [[ "$(echo "$invocation" | jq -r .Status)" == "Success" ]] \
             || { echo "::error::El despliegue fallo (deploy-ghcr.sh restauro la revision anterior si llego a aplicar cambios)."; exit 1; }
-      - name: Comprobar la URL publica (solo desarrollo)
-        if: inputs.target_environment == 'desarrollo'
+      - name: Comprobar la URL publica
         run: |
-          dns=$(aws elb describe-load-balancers --load-balancer-names vibe-desarrollo-elb \
+          dns=$(aws elb describe-load-balancers --load-balancer-names vibe-${{ inputs.target_environment }}-elb \
             --query 'LoadBalancerDescriptions[0].DNSName' --output text)
           for path in / /api/stats /api/tracks; do
             curl -fsS --retry 10 --retry-delay 5 --retry-connrefused --retry-all-errors --max-time 15 \
