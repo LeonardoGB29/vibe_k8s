@@ -2,7 +2,7 @@
 # Un solo comando para desplegar VIBE en AWS Academy Cloud Foundations Sandbox.
 set -Eeuo pipefail
 
-REGION="us-east-1"
+REGION="${AWS_DEFAULT_REGION:-${AWS_REGION:-us-east-1}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIBE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$VIBE_DIR/.." && pwd)"
@@ -16,6 +16,65 @@ REQUEST_FILE="$WORK_DIR/ssm-request.json"
 die() { echo "ERROR: $*" >&2; exit 1; }
 cleanup() { rm -rf "$WORK_DIR"; }
 trap cleanup EXIT
+
+ensure_terraform() {
+  command -v terraform >/dev/null 2>&1 && return 0
+
+  # Reutilizar una instalacion anterior aunque ~/.local/bin no este en PATH.
+  local install_dir="$HOME/.local/bin"
+  export PATH="$install_dir:$PATH"
+  command -v terraform >/dev/null 2>&1 && return 0
+
+  command -v python3 >/dev/null 2>&1 || die "Se necesita python3 para verificar y extraer Terraform."
+  local version="${TERRAFORM_VERSION:-1.17.1}" arch filename base_url download_dir
+  [[ "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || die "TERRAFORM_VERSION debe tener el formato X.Y.Z."
+  [[ "$(uname -s)" == "Linux" ]] || die "La instalacion automatica de Terraform requiere Linux (Lab IDE o CloudShell)."
+  case "$(uname -m)" in
+    x86_64|amd64) arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *) die "Arquitectura no compatible con la instalacion automatica de Terraform: $(uname -m)." ;;
+  esac
+
+  filename="terraform_${version}_linux_${arch}.zip"
+  base_url="https://releases.hashicorp.com/terraform/$version"
+  download_dir="$WORK_DIR/terraform-install"
+  mkdir -p "$download_dir" "$install_dir"
+  echo "Terraform no esta instalado. Instalando $version en $install_dir..."
+  curl -fsSL --retry 3 --connect-timeout 15 --max-time 300 \
+    "$base_url/$filename" -o "$download_dir/$filename" \
+    || die "No se pudo descargar Terraform $version desde HashiCorp."
+  curl -fsSL --retry 3 --connect-timeout 15 --max-time 120 \
+    "$base_url/terraform_${version}_SHA256SUMS" -o "$download_dir/SHA256SUMS" \
+    || die "No se pudieron descargar los checksums de Terraform."
+
+  python3 - "$download_dir" "$filename" <<'PY' || die "No se pudo verificar o extraer Terraform."
+import hashlib
+import pathlib
+import shutil
+import sys
+import zipfile
+
+directory = pathlib.Path(sys.argv[1])
+filename = sys.argv[2]
+checksums = dict(
+    (name.lstrip("*"), digest)
+    for digest, name in (
+        line.split() for line in (directory / "SHA256SUMS").read_text().splitlines()
+        if line.strip()
+    )
+)
+archive = directory / filename
+if hashlib.sha256(archive.read_bytes()).hexdigest() != checksums.get(filename):
+    sys.exit("ERROR: El SHA-256 de Terraform no coincide con el publicado por HashiCorp.")
+with zipfile.ZipFile(archive) as package:
+    with package.open("terraform") as source, (directory / "terraform").open("wb") as target:
+        shutil.copyfileobj(source, target)
+PY
+  chmod 0755 "$download_dir/terraform"
+  mv "$download_dir/terraform" "$install_dir/terraform"
+  rm -rf "$download_dir"
+  terraform version || die "Terraform se instalo, pero no se pudo ejecutar."
+}
 
 require_free_space() {
   local path="$1" minimum_mib="$2" label="$3" available_mib
@@ -79,12 +138,15 @@ ensure_s3_bucket() {
   rm -f "$policy_file"
 }
 
-for tool in aws terraform jq tar curl; do
+for tool in aws jq tar curl; do
   command -v "$tool" >/dev/null 2>&1 || die "No encuentro '$tool'. Ejecuta el script desde Lab IDE con las herramientas instaladas."
 done
+ensure_terraform
 
 export AWS_DEFAULT_REGION="$REGION"
-aws sts get-caller-identity >/dev/null || die "Las credenciales AWS no son válidas o expiraron. Reinicia el Lab y vuelve a ejecutar el script."
+ALERT_EMAIL="${VIBE_ALERT_EMAIL:-}"
+export TF_VAR_alert_email="$ALERT_EMAIL"
+aws sts get-caller-identity >/dev/null || die "AWS CLI no tiene credenciales activas. En AWS Academy inicia/reinicia el Lab y espera a que CloudShell reciba credenciales nuevas; el script reutiliza las credenciales de la sesión y no las guarda. Si usas un perfil local, configura AWS_PROFILE antes de ejecutar."
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
 
@@ -111,10 +173,30 @@ echo "=== 2/6 Creando la infraestructura ==="
 cd "$ENV_DIR"
 printf 'bucket = "%s"\n' "$STATE_BUCKET" > backend.hcl
 terraform init -backend-config=backend.hcl -lockfile=readonly
+# Recuperar el caso de un apply interrumpido que dejo el parametro SSM creado
+# en AWS pero fuera del state. Solo es seguro importarlo si no quedan nodos que
+# dependan del token actual; con nodos existentes se detiene sin rotarlo.
+TOKEN_PARAMETER="/vibe-desarrollo/k3s-token"
+TOKEN_RESOURCE="module.cluster.aws_ssm_parameter.k3s_token"
+TERRAFORM_STATE="$(terraform state list)" || die "No pude leer el state Terraform; no continuare con una importacion automatica."
+if ! grep -Fxq "$TOKEN_RESOURCE" <<< "$TERRAFORM_STATE"; then
+  if aws ssm get-parameter --name "$TOKEN_PARAMETER" --region "$REGION" >/dev/null 2>&1; then
+    EXISTING_NODES="$(aws ec2 describe-instances \
+      --filters 'Name=tag:Name,Values=vibe-desarrollo-k3s-*' \
+                'Name=instance-state-name,Values=pending,running,stopping,stopped' \
+      --query 'length(Reservations[].Instances[])' --output text --region "$REGION")"
+    [[ "$EXISTING_NODES" =~ ^[0-9]+$ ]] || die "No pude comprobar si hay nodos que usen el token SSM existente."
+    if (( EXISTING_NODES > 0 )); then
+      die "Existe $TOKEN_PARAMETER fuera del state y hay $EXISTING_NODES instancias K3s. No rotare el token; recupera el state Terraform antes de reintentar."
+    fi
+    echo "Importando el parámetro SSM existente al state Terraform: $TOKEN_PARAMETER"
+    terraform import "$TOKEN_RESOURCE" "$TOKEN_PARAMETER"
+  fi
+fi
 # Terraform conserva los providers durante plan/apply. El margen de 100 MiB
 # permite continuar en CloudShell aun cuando los providers ocupan casi todo el disco.
 require_free_space "$ENV_DIR" "${VIBE_MIN_AFTER_INIT_MIB:-100}" "CloudShell después de instalar providers Terraform"
-terraform plan -out="$TF_PLAN"
+terraform plan -var="region=$REGION" -var="alert_email=$ALERT_EMAIL" -out="$TF_PLAN"
 require_free_space "$ENV_DIR" "${VIBE_MIN_AFTER_PLAN_MIB:-50}" "CloudShell después de crear el plan Terraform"
 terraform apply -auto-approve "$TF_PLAN"
 
@@ -204,4 +286,15 @@ echo "Despliegue terminado."
 echo "Bucket Raw: $RAW_BUCKET"
 echo "Bucket HLS: $HLS_BUCKET"
 echo "URL:        $ELB_URL"
+terraform output -raw cloudwatch_dashboard_url 2>/dev/null | sed 's/^/CloudWatch:  /' || true
+if [[ -n "$ALERT_EMAIL" ]]; then
+  echo "Alertas: SNS envio una confirmacion a $ALERT_EMAIL; confirmala para activar correos."
+else
+  echo "Alertas: visibles en CloudWatch. Define VIBE_ALERT_EMAIL para recibir avisos por correo."
+fi
 echo "Guarda estos datos y las evidencias antes de que expire el sandbox."
+echo
+echo "Para abrir k8s-web desde Windows, en esta carpeta del repositorio haz doble clic en:"
+echo "  k8s-web/Conectar VIBE AWS.cmd"
+echo "Ese lanzador detecta el servidor, abre el tunel SSM y ejecuta la aplicacion."
+echo "CloudShell no puede iniciar programas en tu PC; el lanzador local ya queda preparado para una sola accion."
