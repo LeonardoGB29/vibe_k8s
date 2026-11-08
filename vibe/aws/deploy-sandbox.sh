@@ -2,7 +2,7 @@
 # Un solo comando para desplegar VIBE en AWS Academy Cloud Foundations Sandbox.
 set -Eeuo pipefail
 
-REGION="us-east-1"
+REGION="${AWS_DEFAULT_REGION:-${AWS_REGION:-us-east-1}}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VIBE_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 REPO_ROOT="$(cd "$VIBE_DIR/.." && pwd)"
@@ -144,7 +144,9 @@ done
 ensure_terraform
 
 export AWS_DEFAULT_REGION="$REGION"
-aws sts get-caller-identity >/dev/null || die "Las credenciales AWS no son válidas o expiraron. Reinicia el Lab y vuelve a ejecutar el script."
+ALERT_EMAIL="${VIBE_ALERT_EMAIL:-}"
+export TF_VAR_alert_email="$ALERT_EMAIL"
+aws sts get-caller-identity >/dev/null || die "AWS CLI no tiene credenciales activas. En AWS Academy inicia/reinicia el Lab y espera a que CloudShell reciba credenciales nuevas; el script reutiliza las credenciales de la sesión y no las guarda. Si usas un perfil local, configura AWS_PROFILE antes de ejecutar."
 ACCOUNT_ID="$(aws sts get-caller-identity --query Account --output text)"
 CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
 
@@ -171,10 +173,30 @@ echo "=== 2/6 Creando la infraestructura ==="
 cd "$ENV_DIR"
 printf 'bucket = "%s"\n' "$STATE_BUCKET" > backend.hcl
 terraform init -backend-config=backend.hcl -lockfile=readonly
+# Recuperar el caso de un apply interrumpido que dejo el parametro SSM creado
+# en AWS pero fuera del state. Solo es seguro importarlo si no quedan nodos que
+# dependan del token actual; con nodos existentes se detiene sin rotarlo.
+TOKEN_PARAMETER="/vibe-desarrollo/k3s-token"
+TOKEN_RESOURCE="module.cluster.aws_ssm_parameter.k3s_token"
+TERRAFORM_STATE="$(terraform state list)" || die "No pude leer el state Terraform; no continuare con una importacion automatica."
+if ! grep -Fxq "$TOKEN_RESOURCE" <<< "$TERRAFORM_STATE"; then
+  if aws ssm get-parameter --name "$TOKEN_PARAMETER" --region "$REGION" >/dev/null 2>&1; then
+    EXISTING_NODES="$(aws ec2 describe-instances \
+      --filters 'Name=tag:Name,Values=vibe-desarrollo-k3s-*' \
+                'Name=instance-state-name,Values=pending,running,stopping,stopped' \
+      --query 'length(Reservations[].Instances[])' --output text --region "$REGION")"
+    [[ "$EXISTING_NODES" =~ ^[0-9]+$ ]] || die "No pude comprobar si hay nodos que usen el token SSM existente."
+    if (( EXISTING_NODES > 0 )); then
+      die "Existe $TOKEN_PARAMETER fuera del state y hay $EXISTING_NODES instancias K3s. No rotare el token; recupera el state Terraform antes de reintentar."
+    fi
+    echo "Importando el parámetro SSM existente al state Terraform: $TOKEN_PARAMETER"
+    terraform import "$TOKEN_RESOURCE" "$TOKEN_PARAMETER"
+  fi
+fi
 # Terraform conserva los providers durante plan/apply. El margen de 100 MiB
 # permite continuar en CloudShell aun cuando los providers ocupan casi todo el disco.
 require_free_space "$ENV_DIR" "${VIBE_MIN_AFTER_INIT_MIB:-100}" "CloudShell después de instalar providers Terraform"
-terraform plan -out="$TF_PLAN"
+terraform plan -var="region=$REGION" -var="alert_email=$ALERT_EMAIL" -out="$TF_PLAN"
 require_free_space "$ENV_DIR" "${VIBE_MIN_AFTER_PLAN_MIB:-50}" "CloudShell después de crear el plan Terraform"
 terraform apply -auto-approve "$TF_PLAN"
 
@@ -264,4 +286,15 @@ echo "Despliegue terminado."
 echo "Bucket Raw: $RAW_BUCKET"
 echo "Bucket HLS: $HLS_BUCKET"
 echo "URL:        $ELB_URL"
+terraform output -raw cloudwatch_dashboard_url 2>/dev/null | sed 's/^/CloudWatch:  /' || true
+if [[ -n "$ALERT_EMAIL" ]]; then
+  echo "Alertas: SNS envio una confirmacion a $ALERT_EMAIL; confirmala para activar correos."
+else
+  echo "Alertas: visibles en CloudWatch. Define VIBE_ALERT_EMAIL para recibir avisos por correo."
+fi
 echo "Guarda estos datos y las evidencias antes de que expire el sandbox."
+echo
+echo "Para abrir k8s-web desde Windows, en esta carpeta del repositorio haz doble clic en:"
+echo "  k8s-web/Conectar VIBE AWS.cmd"
+echo "Ese lanzador detecta el servidor, abre el tunel SSM y ejecuta la aplicacion."
+echo "CloudShell no puede iniciar programas en tu PC; el lanzador local ya queda preparado para una sola accion."

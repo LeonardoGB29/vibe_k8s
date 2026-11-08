@@ -38,6 +38,7 @@ spec:
         app: frontend
         version: v1
     spec:
+      automountServiceAccountToken: false
       tolerations:
         - { key: node.kubernetes.io/not-ready, operator: Exists, effect: NoExecute, tolerationSeconds: 15 }
         - { key: node.kubernetes.io/unreachable, operator: Exists, effect: NoExecute, tolerationSeconds: 15 }
@@ -61,6 +62,10 @@ spec:
         - name: frontend
           image: vibe-frontend:dev
           imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
           ports:
             - containerPort: 8080
               name: http
