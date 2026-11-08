@@ -42,3 +42,13 @@ module "cluster" {
   key_name                = var.key_name
   ami_id                  = var.ami_id
 }
+
+module "monitoring" {
+  source = "../../modules/monitoring"
+
+  name_prefix  = local.name
+  region       = var.region
+  elb_name     = module.cluster.elb_name
+  instance_ids = module.cluster.instance_ids
+  alert_email  = var.alert_email
+}
