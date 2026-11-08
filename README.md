@@ -3,8 +3,8 @@
 ## Despliegue en AWS
 
 La aplicación actual tiene cinco microservicios: frontend, catalog-api, upload-api,
-stream-api y worker. En AWS se ejecutan en cuatro EC2 con k3s, Traefik y S3 real.
-HPA escala las APIs por CPU; KEDA escala workers por la cola Redis (máximo 8 en AWS).
+stream-api y worker. En AWS cada entorno (desarrollo, staging y producción) tiene su propio clúster k3s (1 servidor + 1 a 3 agentes EC2), Traefik, ELB y buckets S3; staging y producción usan RDS PostgreSQL.
+HPA escala las APIs por CPU; KEDA escala workers por la cola Redis (máximo 2 en desarrollo, 5 en staging y 8 en producción). El CI/CD está en GitHub Actions; ver la guía AWS.
 
 Consulta [la guía AWS actualizada](vibe/aws/README.md) y
 [los ensayos medidos](vibe/aws/DEMONSTRATIONS.md).

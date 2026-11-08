@@ -3,8 +3,8 @@
 ## Despliegue en AWS
 
 La aplicación actual tiene cinco microservicios: frontend, catalog-api, upload-api,
-stream-api y worker. En AWS se ejecutan en cuatro EC2 con k3s, Traefik y S3 real.
-HPA escala las APIs por CPU; KEDA escala workers por la cola Redis (máximo 8 en AWS).
+stream-api y worker. En AWS cada entorno (desarrollo, staging y producción) tiene su propio clúster k3s (1 servidor + 1 a 3 agentes EC2), Traefik, ELB y buckets S3; staging y producción usan RDS PostgreSQL.
+HPA escala las APIs por CPU; KEDA escala workers por la cola Redis (máximo 2 en desarrollo, 5 en staging y 8 en producción). El CI/CD está en GitHub Actions; ver la guía AWS.
 
 Consulta [la guía AWS actualizada](aws/README.md) y
 [los ensayos medidos](aws/DEMONSTRATIONS.md).
@@ -107,11 +107,17 @@ redis list: keda_scaler_metrics_value{scaledObject="worker"}
 ## Estructura
 
 ```
-api/         FastAPI + frontend estático (app/static)
-worker/      transcodificador ffmpeg
-tools/       gen_audio.py (dataset), seed.py (carga masiva)
-k8s/         kustomize: base/ (común), overlays/{test,desarrollo} y kind-config.yaml
+services/    microservicios actuales: frontend, catalog-api, upload-api, stream-api, worker
+api/ worker/ versión monolítica anterior (referencia; el despliegue usa services/)
+k8s/         kustomize: base/ (común), overlays/{test,desarrollo,staging,produccion}, KEDA_VERSION y kind-config.yaml
+aws/         despliegue en AWS: init-account.sh, deploy-aws.sh, destroy-aws.sh, cluster-init.sh, deploy-ghcr.sh y ensayos (demo.py)
+terraform/   account/ (guardián de créditos y usuario de CI), bootstrap/, envs/{desarrollo,staging,produccion}, modules/
+tools/       gen_audio.py (dataset), seed.py (carga masiva), scripts de pruebas en AWS
 tests/k6/    load, stress, spike, upload
 chaos/       scripts de tolerancia a fallos
-docs/        informe y evidencia
+results/     resultados de las pruebas de carga (k6)
 ```
+
+La integración y el despliegue continuos están en `.github/workflows/` (raíz del repositorio):
+`ci.yml` (pruebas, escaneos y publicación de imágenes), `deploy.yml` (despliegue por entorno),
+`terraform.yml` y `terraform-drift.yml` (requieren OIDC; no se usan en la cuenta actual).

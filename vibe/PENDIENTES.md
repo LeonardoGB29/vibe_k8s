@@ -5,7 +5,7 @@
 - [x] Volver a ejecutar CI en `main`: todos los jobs requeridos quedaron verdes en el commit `735b619`.
 - [x] Actualizado `.github/workflows/ci.yml`: `test-kind` usa el overlay `ci` y Trivy escanea Terraform activo. Renderizado localmente y CI verde en GitHub para `main` (`735b619`).
 - [x] `test-kind`: overlay `ci` con una réplica por microservicio, usado por el workflow para reducir consumo del runner.
-- [x] `kubectl kustomize k8s/overlays/test` y `.../desarrollo` renderizan localmente; `desarrollo` conserva `maxReplicaCount: 8`.
+- [x] `kubectl kustomize k8s/overlays/test` y `.../desarrollo` renderizan localmente; `desarrollo` usa el perfil básico (worker hasta 2 réplicas, APIs 1 réplica).
 - [x] Reinicios graduales de `catalog-api`, `upload-api` y `stream-api` completados en AWS; cada deployment volvió a 2/2 y `/`, `/api/stats` y `/api/tracks` respondieron HTTP 200.
 - [x] Prueba de caída/recuperación de Postgres (`vibe/aws/demo.py db`): Postgres volvió a 1/1 en 12,1 s; el streaming HLS tuvo 0/29 errores. `/api/tracks` tuvo 22/29 errores mientras la base estuvo apagada y volvió a HTTP 200 al finalizar. Evidencia en `C:\Users\Michael\vibe-evidence\20261028T070734Z-db`.
 - [ ] Validar aparte el arranque de las APIs mientras Postgres todavía no está disponible (orden de despliegue y reintentos de conexión al iniciar).
@@ -58,18 +58,24 @@ Estado de ejecución: el PR #1 ya está integrado en `main`. Las marcas anterior
 - [ ] Unificar `envs/staging` y `envs/produccion` (hoy duplican `main.tf`/`variables.tf`) y versionar los módulos.
 - [ ] Revisar `deletion_protection`/`skip_final_snapshot` de RDS antes de un uso real de producción.
 
-### Migración a cuenta AWS propia (us-east-2, 100 USD de créditos)
+### Migración a cuenta AWS propia (us-east-2, plan gratuito con 120 USD de créditos)
 - [x] Región `us-east-2` en Terraform, scripts y workflows; PostgreSQL 16.15 (la 16.16 no existe en esta región).
 - [x] Rol e instance profile de los nodos en Terraform (`modules/node-iam`), con SSM y CloudWatch Agent: sustituye a `LabInstanceProfile` y desbloquea métricas de memoria/logs.
-- [x] Stack `terraform/account`: guardián de créditos (Lambda horaria que pausa EC2/RDS `Project=vibe` bajo el umbral) y roles OIDC de GitHub. Con pruebas unitarias en CI; `terraform plan` leído contra la cuenta (15 recursos) sin errores.
+- [x] Stack `terraform/account`: guardián de créditos (Lambda horaria que pausa EC2/RDS `Project=vibe` bajo el umbral) y usuario IAM de CI (el OIDC es opcional: las SCP de la cuenta lo prohíben). Con pruebas unitarias en CI; `terraform plan` leído contra la cuenta (15 recursos) sin errores.
 - [x] `deploy.yml`: entrada `commit_sha`, imagen `sha-<SHA>`, verificación de GHCR/servidor/SSM, comprobación de salud y rollback automático en `deploy-ghcr.sh`.
-- [x] Workflows con OIDC en lugar de credenciales temporales.
-- [x] Pipeline CD: `develop` → desarrollo, `main` → staging → producción (aprobación) con el mismo SHA; deriva diaria (`terraform-drift.yml`). Se activa con las variables de repositorio `AUTO_DEPLOY` y `DRIFT_CHECK`.
-- [ ] Poner *Required reviewers* en el Environment `produccion` y activar `AUTO_DEPLOY` tras el primer despliegue manual correcto.
-- [ ] Ejecutar `aws/init-account.sh` (crea state, guardián y roles OIDC) y crear las variables en los GitHub Environments.
+- [x] `deploy.yml` se autentica con la clave del usuario IAM `github-vibe-deploy` (permisos mínimos); `terraform.yml` y la deriva requieren OIDC y no se usan: Terraform se ejecuta en local.
+- [x] Pipeline CD: `develop` despliega solo en desarrollo; staging y producción (clúster propio cada uno, a demanda) se despliegan a mano con `deploy.yml` y el mismo SHA. Variables de repositorio `AUTO_DEPLOY` y `DRIFT_CHECK`.
+- [ ] Poner *Required reviewers* en los Environments `staging` y `produccion`, y activar `AUTO_DEPLOY` tras el primer despliegue manual correcto de desarrollo.
 - [ ] Desplegar desarrollo (`aws/deploy-aws.sh`) y verificar el guardián con `guard_dry_run` antes de dejarlo activo.
-- [ ] Los Ingress de desarrollo/staging/producción no tienen `host` y comparten el mismo Traefik/ELB con la ruta `/`: añadir reglas por host o ruta antes de desplegar staging/producción.
+- [x] Los Ingress ya no compiten por la ruta `/`: cada entorno tiene su propio clúster, Traefik y ELB.
 - [ ] Las apps reciben credenciales temporales del rol copiadas a un Secret (`cluster-init.sh`) que caducan: sustituir por lectura directa del rol o rotación.
+- [x] Un clúster k3s por entorno (desarrollo 1+1 nodos, staging 1+2, producción 1+3), cada uno con su ELB, buckets, rol de nodos y monitoreo; RDS por entorno con `DATABASE_URL` en SSM; `deploy-aws.sh`/`destroy-aws.sh` y `make aws-up|aws-down ENV=...` reciben el entorno; los scripts de distribución de imágenes se adaptan al número real de agentes.
+- [x] CI ejecutado en GitHub: todos los jobs pasan en `f97f865` (Terraform en 5 directorios, Trivy con la excepción AWS-0095, despliegue de prueba en kind) y `image-publish` subió las imágenes `sha-<SHA>` a GHCR.
+- [x] `aws/init-account.sh` ejecutado: bucket del state, guardián de créditos (invocado a mano: saldo leído 120 USD, acción `none`) y usuario `github-vibe-deploy`; clave generada y GitHub Environments creados.
+- [ ] Confirmar la suscripción SNS del correo de alertas (estaba `PendingConfirmation`).
+- [ ] Hacer públicos los 5 paquetes de GHCR (`vibe_k8s-frontend`, `-catalog-api`, `-upload-api`, `-stream-api`, `-worker`) para que los nodos descarguen las imágenes sin credenciales.
+- [ ] Comprobar que los tres Environments tienen los secretos `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` y la variable `AWS_REGION`; rotar la clave cada ~90 días.
+- [ ] Confirmar la cuota de vCPU de EC2 (`L-1216C47A`): el 08/11/2026 seguía en 8 (plan FREE, ajustable con una solicitud en Service Quotas) y los tres entornos juntos suman 18.
 
 ### Mejoras siguientes
 - [x] Añadido workflow manual `deploy.yml` para el despliegue por SSM. Falta validar permisos y ejecución real en AWS.
@@ -81,7 +87,7 @@ Estado de ejecución: el PR #1 ya está integrado en `main`. Las marcas anterior
 
 ### Base de datos y resiliencia
 - [x] AWS genera una contraseña PostgreSQL aleatoria en la primera inicialización, la persiste en el Secret `vibe-secrets` de Kubernetes y pasa `DATABASE_URL` desde ese Secret. Los overlays locales conservan credenciales solo para pruebas; aún falta migrar el Secret persistido a SSM/Secrets Manager.
-- [x] Limitar pools SQL: catálogo 3+1, upload 2+1, worker 1+0. Con los máximos de desarrollo (8/8/8 réplicas) el máximo teórico es 64 conexiones de aplicación; queda pendiente validar ese máximo contra PostgreSQL bajo carga.
+- [x] Limitar pools SQL: catálogo 3+1, upload 2+1, worker 1+0. Con los máximos del perfil anterior (8/8/8 réplicas; hoy desarrollo llega a 2 y staging a 5) el máximo teórico es 64 conexiones de aplicación; queda pendiente validar ese máximo contra PostgreSQL bajo carga.
 - [x] Prueba AWS de caída/recuperación de Postgres (`vibe/aws/demo.py db`): volvió a 1/1 y la API recuperó HTTP 200 en 12,076 s. Durante la caída `/api/tracks` tuvo 22/29 errores; HLS tuvo 0/29. Evidencia: `C:\Users\Michael\vibe-evidence\20261028T070734Z-db`.
 - [ ] Validar aparte el arranque de las APIs mientras Postgres no está disponible (orden de despliegue y reintentos al iniciar).
 - [x] Reinicios graduales de catalog-api, upload-api y stream-api en AWS: rollouts completos; endpoints principales volvieron a HTTP 200.
@@ -96,7 +102,7 @@ Estado de ejecución: el PR #1 ya está integrado en `main`. Las marcas anterior
 - [ ] Revisar el costo con el presupuesto actual, confirmar permisos con un plan/apply controlado y desplegar staging/produccion por turnos; ejecutar y documentar prueba de failover.
 - [x] Crear overlays Kubernetes separados para desarrollo, staging y producción. Staging/producción omiten PostgreSQL local y usan namespaces independientes; CI renderiza los cuatro overlays (`test`, `desarrollo`, `staging`, `produccion`) y valida también los tres wrappers Terraform.
 - [ ] Crear usuario PostgreSQL de aplicación con permisos restringidos y distribuir `DATABASE_URL`/credenciales S3 a los Secrets aislados de staging y producción mediante un mecanismo seguro.
-- [ ] Desplegar staging y producción con `deploy.yml`; validar conectividad a sus RDS y guardar evidencia. El workflow reutiliza el clúster K3s de desarrollo.
+- [ ] Desplegar staging y producción con `deploy.yml`; validar conectividad a sus RDS y guardar evidencia. Cada entorno tiene su propio clúster: primero `bash aws/deploy-aws.sh <entorno>`.
 - [ ] Definir backups automatizados y probar restauración; PVC local no ofrece recuperación entre nodos.
 - [ ] Hacer durable y reintentable la cola de transcodificación (ACK tras completar, reintentos e idempotencia).
 - [x] Preparado Terraform para dashboard CloudWatch y alarmas de estado/CPU EC2, salud/latencia/HTTP 5xx del Classic ELB; SNS por correo opcional (`VIBE_ALERT_EMAIL`).

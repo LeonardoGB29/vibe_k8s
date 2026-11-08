@@ -1,6 +1,6 @@
 # Ensayos de VIBE en AWS
 
-El clúster real tiene un servidor k3s y tres agentes EC2, Traefik, S3 y KEDA 2.21.
+Los ensayos se midieron en un clúster con un servidor k3s y tres agentes EC2 (el tamaño de producción), con Traefik, S3 y KEDA 2.21; el procedimiento sirve para cualquier entorno con `KUBECONFIG` apuntando a su servidor.
 Los ensayos usan solicitudes HTTP nuevas a través del balanceador y guardan
 estados de Kubernetes, series y CSV en ~/vibe-evidence. La latencia se mide desde
 la EC2 que genera las solicitudes, no desde el navegador del usuario.

@@ -1,26 +1,36 @@
 # Entornos Kubernetes de VIBE
 
-Los overlays comparten los microservicios de `base`, pero aíslan la
-configuración por namespace:
+Los overlays comparten los microservicios de `base` y cambian el tamaño y la base de
+datos de cada entorno. En AWS **cada entorno corre en su propio clúster k3s** (con su
+ELB, buckets, rol de nodos y, en staging y producción, su RDS); el namespace sigue
+distinto por convención y para poder leer los recursos sin confusión.
 
-| Entorno | Overlay | Namespace | Base de datos |
-|---|---|---|---|
-| Pruebas | `overlays/test` | `vibe` | PostgreSQL local para kind/CI |
-| Desarrollo | `overlays/desarrollo` | `vibe` | PostgreSQL local en el clúster AWS actual |
-| Staging | `overlays/staging` | `vibe-staging` | RDS PostgreSQL Single-AZ |
-| Producción | `overlays/produccion` | `vibe-produccion` | RDS PostgreSQL Multi-AZ |
+| Entorno | Overlay | Namespace | Clúster AWS (por defecto) | Base de datos | Escalado |
+|---|---|---|---|---|---|
+| Pruebas | `overlays/test` | `vibe` | kind (local o job `test-kind` del CI) | PostgreSQL y SeaweedFS/MinIO locales | réplicas del CI |
+| Desarrollo | `overlays/desarrollo` | `vibe` | 1 servidor + 1 agente (4 vCPU) | PostgreSQL local en el clúster | APIs 1 réplica, HPA 1–2; worker (KEDA) hasta 2 |
+| Staging | `overlays/staging` | `vibe-staging` | 1 servidor + 2 agentes (6 vCPU) | RDS PostgreSQL Single-AZ | HPA hasta 5; worker hasta 5 |
+| Producción | `overlays/produccion` | `vibe-produccion` | 1 servidor + 3 agentes (8 vCPU) | RDS PostgreSQL Multi-AZ | worker hasta 8 |
 
-Staging y producción no incluyen el StatefulSet de PostgreSQL. Los servicios
-leen `DATABASE_URL` del Secret `vibe-secrets` en su propio namespace. Ese Secret
-debe contener una URL del endpoint RDS con un usuario de aplicación restringido,
-además de las claves S3 temporales requeridas por los servicios. No se guarda en
-Git ni se copia desde desarrollo. El proceso automatizado de creación del rol
-PostgreSQL y distribución segura de este Secret sigue pendiente.
+El número de agentes se cambia con `-var=agent_count=N` en `terraform/envs/<entorno>`.
+Staging y producción no incluyen el StatefulSet de PostgreSQL: los servicios leen
+`DATABASE_URL` del Secret `vibe-secrets` de su namespace.
 
-Los otros ajustes (Redis, región y buckets S3) se copian desde el ConfigMap
-`vibe-config` de desarrollo si no existen en el namespace de destino. Esto
-permite compartir los buckets del entorno AWS existente mientras se prueban las
-bases separadas.
+## Cómo se crean `vibe-config` y `vibe-secrets`
+
+No están en Git. Los crea `aws/cluster-init.sh` en el clúster del entorno cuando se
+ejecuta `bash aws/deploy-aws.sh <entorno>`:
+
+- `vibe-config`: región, buckets S3 del entorno, cola y bitrates.
+- `vibe-secrets`: en desarrollo, una contraseña de PostgreSQL generada al azar; en
+  staging y producción, la `DATABASE_URL` del RDS, que `deploy-aws.sh` guarda antes como
+  SecureString en SSM (`/vibe-<entorno>/database-url`) y que solo puede leer el rol de
+  los nodos de ese entorno. También lleva las credenciales temporales del rol de los
+  nodos para S3.
+
+**Pendiente:** la `DATABASE_URL` usa el usuario administrador de RDS (falta un rol
+PostgreSQL restringido para la aplicación) y las credenciales S3 temporales caducan en
+unas horas (falta leerlas directamente del rol o rotarlas).
 
 ## Renderizar o desplegar
 
@@ -29,17 +39,23 @@ kubectl kustomize overlays/test
 kubectl kustomize overlays/desarrollo
 kubectl kustomize overlays/staging
 kubectl kustomize overlays/produccion
-
-kubectl apply -k overlays/staging
-kubectl apply -k overlays/produccion
 ```
 
-Para GitHub Actions, `deploy.yml` recibe el SHA de la imagen y el entorno de
-destino (`desarrollo`, `staging` o `produccion`). Usa el clúster K3s del entorno
-desarrollo como cómputo compartido y aplica el overlay al namespace elegido. El
-Environment de GitHub correspondiente debe tener credenciales temporales AWS
-vigentes. Staging/producción deben tener su Secret de aplicación antes de
-ejecutar el workflow.
+Para levantar un entorno completo en AWS usa `bash aws/deploy-aws.sh <entorno>` (o
+`make aws-up ENV=<entorno>`); no apliques los overlays a mano en un clúster sin
+inicializar.
 
-En CI se renderizan y validan los cuatro overlays, y Terraform valida los
-wrappers de desarrollo, staging y producción. `test` continúa usando kind.
+## Despliegue de nuevas versiones (GitHub Actions)
+
+`deploy.yml` recibe el **SHA completo del commit** y el entorno de destino
+(`desarrollo`, `staging` o `produccion`). Comprueba que las imágenes `sha-<SHA>` existen en
+GHCR, que el servidor del entorno (`vibe-<entorno>-k3s-server`) está encendido y Online
+en SSM, y ejecuta `aws/deploy-ghcr.sh` en él: fija las imágenes con el transformador
+`images:` de kustomize, aplica el overlay, espera los rollouts, comprueba la salud y, si algo
+falla, restaura la revisión anterior (`rollout undo`). Solo desarrollo se despliega solo
+(push a `develop`); staging y producción se lanzan a mano. El clúster del entorno debe
+existir. La versión de KEDA está en `KEDA_VERSION` (la usan el CI y `cluster-init.sh`).
+
+En CI se renderizan y validan los cuatro overlays con kubeconform, y `test` se despliega
+en kind con pruebas de humo. Terraform valida los directorios de desarrollo, staging,
+producción, `account` y `bootstrap`.

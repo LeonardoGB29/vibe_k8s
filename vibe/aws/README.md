@@ -1,15 +1,24 @@
 # VIBE en AWS
 
-El entorno `desarrollo` corre en la región asignada a la cuenta (`us-east-2`):
-cuatro EC2 (`t3.medium` para el servidor k3s + 3 `t3.small` como agentes), un
-Classic ELB y buckets S3. Los discos EBS gp2 son de 20 GB (servidor) y 15 GB
-(cada agente). Los nodos se administran con SSM Session Manager: no hay SSH ni
-claves `.pem`. El detalle de Terraform, el pipeline CI/CD y las variables de
-GitHub están en [terraform/README.md](../terraform/README.md).
+Hay tres entornos, cada uno con su propio clúster k3s, Classic ELB, buckets S3, rol de
+nodos y monitoreo, en la región asignada a la cuenta (`us-east-2`):
 
-**Costo aproximado** encendido 24/7: ~3,8 USD/día (~0,85 USD/día con las EC2
-apagadas, porque ELB, discos y alarmas siguen cobrando). El guardián de créditos
-(`terraform/account`) pausa EC2 y RDS cuando los créditos bajan del umbral.
+| Entorno | Nodos (por defecto) | vCPU | Base de datos | USD/día aprox. (24/7) |
+|---|---|---:|---|---:|
+| `desarrollo` | 1 servidor `t3.medium` + 1 agente `t3.small` | 4 | PostgreSQL en el clúster | 2,45 |
+| `staging` | 1 servidor + 2 agentes | 6 | RDS Single-AZ | 3,63 |
+| `produccion` | 1 servidor + 3 agentes | 8 | RDS Multi-AZ | 4,81 |
+
+Los discos EBS gp2 son de 20 GB (servidor) y 15 GB (cada agente). Los nodos se
+administran con SSM Session Manager: no hay SSH ni claves `.pem`. El detalle de
+Terraform, el pipeline CI/CD y las variables de GitHub están en
+[terraform/README.md](../terraform/README.md).
+
+**Costo:** con las EC2 apagadas un entorno cuesta ~0,85 USD/día (ELB, discos y alarmas
+siguen cobrando). Levanta staging y producción solo cuando los necesites y comprueba la
+cuota de vCPU de EC2 (los tres juntos suman 18). El guardián de créditos
+(`terraform/account`) pausa EC2 y RDS con la etiqueta `Project=vibe` cuando los créditos
+bajan del umbral.
 
 ## 1. Preparar la cuenta (una sola vez)
 
@@ -18,20 +27,25 @@ export AWS_PROFILE=<tu perfil>                 # sesión iniciada con `aws login
 VIBE_ALERT_EMAIL=tu@correo bash aws/init-account.sh
 ```
 
-Crea el bucket del state de Terraform, el guardián de créditos y los roles OIDC
-de GitHub Actions. Pide escribir `continuar` antes de crear nada.
+Crea el bucket del state de Terraform, el guardián de créditos y el usuario IAM
+`github-vibe-deploy` que usa GitHub Actions (sin clave: se genera a mano, ver
+[terraform/README.md](../terraform/README.md#github-actions-y-credenciales)). Pide
+escribir `continuar` antes de crear nada. Necesita `aws` y `terraform`; si ejecutas
+también `deploy-aws.sh` necesitas `jq`.
 
-## 2. Desplegar el entorno desarrollo
+## 2. Desplegar un entorno
 
 ```bash
-bash aws/deploy-aws.sh          # o: make aws-up
+bash aws/deploy-aws.sh [desarrollo|staging|produccion]    # o: make aws-up ENV=staging
 ```
 
-Solicita escribir `desplegar`. Crea/configura tres buckets con AWS CLI, aplica
-Terraform (cuatro EC2, ELB, IAM de los nodos, CloudWatch), empaqueta la
-aplicación, la instala en el servidor por SSM (`cluster-init.sh`), comprueba `/`,
-`/api/stats` y `/api/tracks` y muestra la URL pública. Antes de empezar revisa
-el espacio libre local, en el servidor y en cada agente.
+Solicita escribir `desplegar`. Crea/configura los tres buckets del entorno con AWS CLI,
+aplica Terraform (EC2 del clúster, ELB, IAM de los nodos, CloudWatch y, en staging y
+producción, RDS), guarda la `DATABASE_URL` del RDS en SSM, empaqueta la aplicación, la
+instala en el servidor por SSM (`cluster-init.sh`, con el overlay del entorno), comprueba
+`/`, `/api/stats` y `/api/tracks` y muestra la URL pública. Antes de empezar revisa el
+espacio libre local, en el servidor y en cada agente. El número de agentes lo marca
+`agent_count` de Terraform (el script se adapta al número real).
 
 Si Terraform no está instalado, el script descarga la versión `TERRAFORM_VERSION`
 (1.16.6 por defecto) desde HashiCorp, verifica su SHA-256 y la instala en
@@ -44,10 +58,10 @@ distribuye a los agentes con S3 y SSM Run Command (`build-and-load.sh`,
 
 ## 3. Desplegar nuevas versiones
 
-Con el pipeline: un push a `develop` publica las imágenes y despliega en
-desarrollo; `main` despliega en staging y, tras aprobación, en producción
-(variable de repositorio `AUTO_DEPLOY=true`). También se puede lanzar a mano el
-workflow `deploy` con el SHA completo de un commit. Ver
+Con el pipeline: un push a `develop` que pasa el CI publica las imágenes y despliega
+solo en desarrollo (variable de repositorio `AUTO_DEPLOY=true`). Staging y producción se
+levantan a demanda (`make aws-up ENV=staging`) y se despliegan a mano con el workflow
+`deploy` y el SHA completo de un commit, con aprobadores en su Environment. Ver
 [terraform/README.md](../terraform/README.md#pipeline-cicd).
 
 Para repetir las pruebas medidas y guardar evidencia, ver
@@ -68,7 +82,7 @@ todas con vencimiento el 27 de abril de 2027; al vencer vuelven a requerir revis
 
 ## 5. CloudWatch
 
-Terraform crea el dashboard `vibe-desarrollo-operations` y alarmas de EC2 y ELB.
+Terraform crea en cada entorno el dashboard `vibe-<entorno>-operations` y alarmas de EC2 y ELB.
 Para recibir avisos por correo, antes de desplegar:
 
 ```bash
@@ -84,5 +98,6 @@ memoria y logs de sistema y pods.
 ## 6. Evidencias y limpieza
 
 Exporta resultados, capturas y código a un lugar fuera de AWS. Los recursos no
-caducan solos: `make aws-down` (`bash aws/destroy-aws.sh`) ejecuta
-`terraform destroy` del entorno desarrollo y conserva los buckets S3.
+caducan solos: `make aws-down ENV=<entorno>` (`bash aws/destroy-aws.sh <entorno>`)
+ejecuta `terraform destroy` de ese entorno, borra su parámetro `database-url` de SSM y
+conserva los buckets S3.
