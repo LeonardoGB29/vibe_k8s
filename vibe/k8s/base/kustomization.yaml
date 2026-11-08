@@ -4,6 +4,7 @@ kind: Kustomization
 # Requiere los CRDs de KEDA (ScaledObject) y metrics-server para los HPA.
 # vibe-config y vibe-secrets los aporta cada overlay.
 resources:
+  - 20-postgres.yaml
   - 22-redis.yaml
   - 30-frontend.yaml
   - 31-catalog-api.yaml
