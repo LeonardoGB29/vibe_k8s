@@ -233,10 +233,21 @@ output "server_instance_id" {
   value = aws_instance.server.id
 }
 
+output "elb_name" {
+  value = aws_elb.this.name
+}
+
 output "server_private_ip" {
   value = aws_instance.server.private_ip
 }
 
 output "agent_instance_ids" {
   value = { for k, a in aws_instance.agent : k => a.id }
+}
+
+output "instance_ids" {
+  value = merge(
+    { "k3s-server" = aws_instance.server.id },
+    { for name, agent in aws_instance.agent : name => agent.id }
+  )
 }
