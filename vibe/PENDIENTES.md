@@ -40,6 +40,8 @@ credenciales temporales y comprueba que los servicios vuelvan a responder.
 - [x] Documentadas las excepciones: SSE-S3 por permisos KMS insuficientes y ELB HTTP público requerido por la demo. No se habilita SSE-KMS.
 - [x] Imágenes de los cinco microservicios ejecutan como usuario sin privilegios (`DS-0002`); archivos de la app son legibles y temporales del worker/upload van en `/tmp`.
 - [x] Añadido `runAsNonRoot`, UID/GID no privilegiado y seccomp RuntimeDefault en los cinco workloads de aplicación. `readOnlyRootFilesystem` queda pendiente hasta validarlo en despliegue.
+- [x] Endurecidos los cinco pods: deshabilitada la elevación de privilegios, eliminadas todas las Linux capabilities y deshabilitado el montaje automático del token de ServiceAccount.
+- [x] Añadido job CI para ejecutar pruebas unitarias del panel `k8s-web`; no sustituye pruebas unitarias de los microservicios.
 - [x] CloudFormation marcado como legado no soportado y fuera del escaneo activo; Terraform vigente exige IMDSv2 y cifra EBS.
 - [x] Volver a ejecutar Trivy/Checkov en GitHub: el job `IaC security scan` pasó en `main` (`735b619`). Checkov continúa en `soft_fail`; Trivy mantiene el bloqueo para `HIGH`/`CRITICAL` no exceptuados.
 
@@ -77,5 +79,7 @@ credenciales temporales y comprueba que los servicios vuelvan a responder.
 - [ ] Evaluar RDS PostgreSQL Single-AZ (el sandbox no permite Multi-AZ; clases nano–medium) frente al PostgreSQL del clúster, incluyendo costo y permisos.
 - [ ] Definir backups automatizados y probar restauración; PVC local no ofrece recuperación entre nodos.
 - [ ] Hacer durable y reintentable la cola de transcodificación (ACK tras completar, reintentos e idempotencia).
-- [ ] Instalar métricas/alertas persistentes en AWS.
+- [x] Preparado Terraform para dashboard CloudWatch y alarmas de estado/CPU EC2, salud/latencia/HTTP 5xx del Classic ELB; SNS por correo opcional (`VIBE_ALERT_EMAIL`).
+- [ ] Aplicar el módulo de monitoreo en AWS, comprobar datos del dashboard bajo tráfico y confirmar la suscripción SNS si se configuró correo.
+- [ ] Integrar CloudWatch Agent para memoria, logs de sistema y logs de contenedores; requiere permisos de `CloudWatchAgentServerPolicy` en el perfil de EC2, fuera del IAM disponible actualmente en AWS Academy.
 - [x] ServiceMonitor local actualizado para catalog-api, upload-api, stream-api y worker; validar instalación AWS con Prometheus real.

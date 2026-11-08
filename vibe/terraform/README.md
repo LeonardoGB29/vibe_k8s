@@ -5,6 +5,7 @@ bootstrap/            nombre del bucket S3 del state
 modules/network/      VPC predeterminada, subredes, security groups (sin SSH ni 6443 publicos)
 modules/storage/      nombres de buckets S3 raw y hls
 modules/k3s-cluster/  servidor k3s + agentes (for_each), token en SSM, Traefik, ELB
+modules/monitoring/   dashboard CloudWatch, alarmas EC2/ELB y SNS opcional
 envs/desarrollo/      composicion del entorno desarrollo en AWS
 ```
 
@@ -29,6 +30,25 @@ por eso el state y los buckets de audio no se administran como recursos Terrafor
   Se reutiliza `LabInstanceProfile`/`LabRole`, precreados por el sandbox; IAM es de solo lectura y no se pueden crear roles propios. Las credenciales del CLI se obtienen en Lab IDE y caducan al cerrar la sesión.
 - **Reproducibilidad:** versiones fijas de k3s, de providers (`~>`) y de Terraform (`>= 1.10`), `.terraform.lock.hcl` versionado, AMI ignorada tras la creacion (`ignore_changes`) para que un plan posterior no recree nodos.
 - **Idempotencia:** `terraform plan` sin cambios debe salir vacio. KEDA y la aplicacion no estan en Terraform: las aplica `aws/cluster-init.sh` (`kubectl apply -k k8s/overlays/desarrollo`).
+
+## CloudWatch
+
+El entorno crea un dashboard y alarmas para `StatusCheckFailed` y CPU de cada
+EC2, y para hosts no saludables, cantidad baja de hosts sanos, latencia y
+respuestas HTTP 5xx del Classic ELB. Las métricas EC2/ELB las publica AWS sin
+instalar agentes. El dashboard se muestra como `cloudwatch_dashboard_url` al
+terminar Terraform/deploy.
+
+Para recibir correo, establece `VIBE_ALERT_EMAIL=tu@correo` antes de ejecutar
+`bash aws/deploy-sandbox.sh`; SNS enviará un correo de confirmación que hay que
+aceptar. Sin esa variable, las alarmas quedan visibles en CloudWatch pero no
+envían notificaciones. CPU alta se define como >=85% durante 15 minutos;
+latencia ELB como >2 s durante 15 minutos; 5 o más respuestas 5xx en un periodo
+de 5 minutos disparan la alarma.
+
+Memoria, logs de sistema y logs de pods no se envían aún a CloudWatch. Para eso
+se requiere instalar CloudWatch Agent/Fluent Bit y conceder permisos IAM al rol
+de las EC2; el perfil de AWS Academy es precreado y este Terraform no lo modifica.
 
 ## GitHub Actions y credenciales
 
