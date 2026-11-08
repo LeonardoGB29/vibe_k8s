@@ -5,10 +5,18 @@ bootstrap/            nombre del bucket S3 del state
 modules/network/      VPC predeterminada, subredes, security groups (sin SSH ni 6443 publicos)
 modules/storage/      nombres de buckets S3 raw y hls
 modules/k3s-cluster/  servidor k3s + agentes (for_each), token en SSM, Traefik, ELB
+modules/rds-postgres/ RDS PostgreSQL privado; clase, respaldos y Multi-AZ configurables
 envs/desarrollo/      composicion del entorno desarrollo en AWS
+envs/staging/         wrapper RDS Single-AZ; reutiliza VPC y nodos del entorno desarrollo
+envs/produccion/         wrapper RDS Multi-AZ; reutiliza VPC y nodos del entorno desarrollo
 ```
 
 `test` no usa Terraform: es un cluster kind (`make up`, o el job `test-kind` del CI).
+Staging y producción tienen configuraciones y estados separados, pero
+reutilizan la VPC y el security group de nodos K3s de `desarrollo`. Esta es una
+decisión de costo/cuota del Learner Lab, no aislamiento equivalente a cuentas o
+clusters independientes. Los wrappers nuevos aprovisionan RDS; no crean otros
+clusters EC2.
 
 ## Despliegue en AWS Academy
 
@@ -21,6 +29,50 @@ El script crea/configura los buckets con AWS CLI y usa Terraform para el resto
 de la infraestructura. AWS Academy deniega `s3:GetBucketObjectLockConfiguration`,
 que el proveedor AWS de Terraform requiere al leer un recurso `aws_s3_bucket`;
 por eso el state y los buckets de audio no se administran como recursos Terraform.
+
+## Staging y producción (RDS)
+
+Los dos wrappers llaman al mismo módulo `modules/rds-postgres` y guardan el state
+en objetos S3 separados:
+
+| Entorno | RDS | Retención | Clase inicial | State |
+|---|---|---:|---|---|
+| `staging` | PostgreSQL Single-AZ | 1 día | `db.t3.micro` | `staging/terraform.tfstate` |
+| `produccion` | PostgreSQL Multi-AZ | 3 días | `db.t3.micro` | `produccion/terraform.tfstate` |
+
+Ambos usan 20 GiB gp2, crecimiento máximo de 30 GiB, acceso privado y permiten
+conexiones TCP/5432 únicamente desde `vibe-desarrollo-nodes`. Requieren que la
+infraestructura de `desarrollo` ya exista en la misma cuenta/VPC. Las clases y
+la versión predeterminadas se basan en las opciones que el Learner Lab devolvió
+para PostgreSQL en `us-east-1`; AWS todavía puede denegar la creación por
+permisos, cuotas o presupuesto.
+
+Para inicializar un wrapper, copia `backend.hcl.example` a `backend.hcl` y usa el
+bucket de state existente. Por ejemplo:
+
+```bash
+cd vibe/terraform/envs/staging
+cp backend.hcl.example backend.hcl
+terraform init -backend-config=backend.hcl
+terraform plan
+terraform apply
+```
+
+Usa los mismos pasos desde `envs/produccion` solo después de destruir
+staging si el presupuesto restante lo requiere. `terraform destroy` elimina la
+instancia y omite el snapshot final porque son entornos de demostración. El
+password administrador se genera automáticamente y queda dentro del state S3
+cifrado. `terraform output -raw db_password` lo revela en pantalla; úsalo solo
+para el bootstrap administrativo, nunca como credencial de la aplicación, y no
+guardes su salida en Git. Falta automatizar la creación de un rol PostgreSQL
+restringido para la app y su Secret. No se ejecutó `terraform apply` durante
+estos cambios.
+
+Estos wrappers aprovisionan solamente la base RDS. La aplicación sigue desplegada
+por el flujo existente en el namespace `vibe`; todavía hay que crear los overlays
+y el paso de despliegue/Secret para ejecutar los microservicios en namespaces
+staging y producción. La prueba de failover de RDS también queda pendiente
+de ejecutar y registrar.
 
 ## Decisiones
 

@@ -74,7 +74,9 @@ credenciales temporales y comprueba que los servicios vuelvan a responder.
 - [x] Prueba de flujo worker/KEDA: 12 audios sintéticos procesados, cola pico 9, máximo 5 workers, 302,3 s; tracks de prueba eliminados y cola Redis verificada en cero. Evidencia: `C:\Users\Michael\vibe-evidence\20261028T074031Z-keda`.
 - [ ] Ejecutar una prueba controlada de caída de nodo/EC2; requiere credenciales AWS activas y verificar de antemano la ubicación de PVC locales.
 - [ ] Ejecutar OOM del worker solo con ventana de prueba y restauración de 512 MiB verificada; no se completó esta sesión.
-- [ ] Evaluar RDS PostgreSQL Single-AZ (el sandbox no permite Multi-AZ; clases nano–medium) frente al PostgreSQL del clúster, incluyendo costo y permisos.
+- [x] Revisada la disponibilidad de RDS PostgreSQL en Learner Lab: `describe-orderable-db-instance-options` devolvió clases pequeñas (`db.t3.micro`, `db.t3.small`, `db.t3.medium`) con `MultiAZ=True` en `us-east-1`. Añadido el módulo Terraform reutilizable y wrappers `staging` Single-AZ y `produccion` Multi-AZ; todavía no se han aplicado.
+- [ ] Revisar el costo con el presupuesto actual, confirmar permisos con un plan/apply controlado y desplegar staging/produccion por turnos; ejecutar y documentar prueba de failover.
+- [ ] Crear overlays de Kubernetes para namespaces staging/produccion, conectar cada uno a RDS con un usuario de aplicación restringido y aislar su configuración/secretos.
 - [ ] Definir backups automatizados y probar restauración; PVC local no ofrece recuperación entre nodos.
 - [ ] Hacer durable y reintentable la cola de transcodificación (ACK tras completar, reintentos e idempotencia).
 - [ ] Instalar métricas/alertas persistentes en AWS.
