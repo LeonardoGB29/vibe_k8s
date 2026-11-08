@@ -1,10 +1,15 @@
 name: deploy
 
+# Despliega en el cluster k3s de desarrollo (staging y produccion comparten ese
+# cluster, en namespaces distintos). Autenticacion con la clave del usuario IAM
+# github-vibe-deploy (permisos minimos; el proyecto prohibe OIDC). Requiere en cada
+# Environment los secretos AWS_ACCESS_KEY_ID y AWS_SECRET_ACCESS_KEY y (opcional) la
+# variable AWS_REGION; ver vibe/terraform/README.md.
 on:
   workflow_dispatch:
     inputs:
-      image_tag:
-        description: Commit SHA (GHCR tag) to deploy
+      commit_sha:
+        description: "SHA completo (40 caracteres) del commit a desplegar; la imagen GHCR es sha-<SHA>"
         required: true
         type: string
       target_environment:
@@ -15,56 +20,111 @@ on:
           - desarrollo
           - staging
           - produccion
+  # Lo invoca ci.yml (CD automatico) con el mismo SHA que acaba de pasar el CI.
+  workflow_call:
+    inputs:
+      commit_sha:
+        required: true
+        type: string
+      target_environment:
+        required: true
+        type: string
 
 permissions:
   contents: read
   packages: read
 
+# Los tres entornos comparten el mismo cluster k3s: un solo despliegue a la vez.
 concurrency:
-  group: deploy-${{ inputs.target_environment }}
+  group: deploy-cluster
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     environment: ${{ inputs.target_environment }}
+    env:
+      COMMIT_SHA: ${{ inputs.commit_sha }}
+      # El tag que publica ci.yml (docker/metadata-action type=sha,format=long)
+      # lleva el prefijo "sha-"; el commit de Git no.
+      IMAGE_TAG: sha-${{ inputs.commit_sha }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-2' }}
     steps:
+      - name: Validar el SHA
+        run: |
+          if [[ ! "$COMMIT_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::commit_sha debe ser el SHA completo de 40 caracteres hexadecimales (sin el prefijo sha-)."
+            exit 1
+          fi
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.image_tag }}
+          ref: ${{ inputs.commit_sha }}
+      - name: Verificar que las imagenes existen en GHCR
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          owner="${OWNER,,}"
+          echo "$GH_TOKEN" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for service in frontend catalog-api upload-api stream-api worker; do
+            image="ghcr.io/${owner}/vibe_k8s-${service}:${IMAGE_TAG}"
+            docker manifest inspect "$image" >/dev/null \
+              || { echo "::error::No existe $image. ¿Termino el job image-publish de ese commit?"; exit 1; }
+            echo "ok $image"
+          done
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
-          aws-region: us-east-1
-      - uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.16.6
-      - name: Read Terraform state
-        working-directory: vibe/terraform/envs/desarrollo
-        run: terraform init -input=false -lockfile=readonly -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
-      - name: Resolve server instance
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Localizar el servidor y comprobar SSM
         id: server
         run: |
-          echo "id=$(terraform -chdir=vibe/terraform/envs/desarrollo output -raw server_instance_id)" >> "$GITHUB_OUTPUT"
-          echo "bucket=$(terraform -chdir=vibe/terraform/envs/desarrollo output -raw raw_bucket)" >> "$GITHUB_OUTPUT"
+          account=$(aws sts get-caller-identity --query Account --output text)
+          id=$(aws ec2 describe-instances \
+            --filters "Name=tag:Name,Values=vibe-desarrollo-k3s-server" "Name=instance-state-name,Values=running" \
+            --query 'Reservations[0].Instances[0].InstanceId' --output text)
+          if [[ "$id" == "None" || -z "$id" ]]; then
+            echo "::error::El servidor k3s de desarrollo no esta encendido. Aplica terraform (desarrollo) o enciende las EC2 (puede haberlas pausado el guardian de creditos)."
+            exit 1
+          fi
+          ping=$(aws ssm describe-instance-information --filters "Key=InstanceIds,Values=$id" \
+            --query 'InstanceInformationList[0].PingStatus' --output text)
+          if [[ "$ping" != "Online" ]]; then
+            echo "::error::El agente SSM de $id no esta Online (estado: $ping)."
+            exit 1
+          fi
+          echo "id=$id" >> "$GITHUB_OUTPUT"
+          echo "bucket=vibe-desarrollo-audio-raw-${account}" >> "$GITHUB_OUTPUT"
       - name: Deploy with SSM
         env:
           INSTANCE_ID: ${{ steps.server.outputs.id }}
-          IMAGE_TAG: ${{ inputs.image_tag }}
           IMAGE_OWNER: ${{ github.repository_owner }}
           RAW_BUCKET: ${{ steps.server.outputs.bucket }}
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
         run: |
-          archive="vibe-${IMAGE_TAG}.tar.gz"
-          git archive --format=tar.gz --output="$archive" "$IMAGE_TAG"
+          archive="vibe-${COMMIT_SHA}.tar.gz"
+          git archive --format=tar.gz --output="$archive" "$COMMIT_SHA"
           aws s3 cp "$archive" "s3://${RAW_BUCKET}/deployment/${archive}"
           command_id=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
-            --parameters commands="sudo -iu ec2-user bash -lc 'aws s3 cp s3://${RAW_BUCKET}/deployment/${archive} ~/vibe-deploy.tar.gz && mkdir -p ~/vibe-deploy && tar -xzf ~/vibe-deploy.tar.gz -C ~/vibe-deploy && cd ~/vibe-deploy/vibe && TARGET_ENVIRONMENT=${TARGET_ENVIRONMENT} IMAGE_TAG=${IMAGE_TAG} REGISTRY_OWNER=${IMAGE_OWNER,,} bash aws/deploy-ghcr.sh'" \
+            --timeout-seconds 1800 \
+            --parameters commands="sudo -iu ec2-user bash -lc 'aws s3 cp s3://${RAW_BUCKET}/deployment/${archive} ~/vibe-deploy.tar.gz && rm -rf ~/vibe-deploy && mkdir -p ~/vibe-deploy && tar -xzf ~/vibe-deploy.tar.gz -C ~/vibe-deploy && cd ~/vibe-deploy/vibe && TARGET_ENVIRONMENT=${TARGET_ENVIRONMENT} IMAGE_TAG=${IMAGE_TAG} REGISTRY_OWNER=${IMAGE_OWNER,,} bash aws/deploy-ghcr.sh'" \
             --query 'Command.CommandId' --output text)
-          aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID"
-          aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" --query StandardOutputContent --output text
+          # `wait` devuelve error si el comando falla; seguimos para mostrar siempre la salida.
+          aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID" || true
+          invocation=$(aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" --output json)
+          echo "$invocation" | jq -r '"Estado: " + .Status + "\n--- STDOUT ---\n" + .StandardOutputContent + "\n--- STDERR ---\n" + .StandardErrorContent'
+          [[ "$(echo "$invocation" | jq -r .Status)" == "Success" ]] \
+            || { echo "::error::El despliegue fallo (deploy-ghcr.sh restauro la revision anterior si llego a aplicar cambios)."; exit 1; }
+      - name: Comprobar la URL publica (solo desarrollo)
+        if: inputs.target_environment == 'desarrollo'
+        run: |
+          dns=$(aws elb describe-load-balancers --load-balancer-names vibe-desarrollo-elb \
+            --query 'LoadBalancerDescriptions[0].DNSName' --output text)
+          for path in / /api/stats /api/tracks; do
+            curl -fsS --retry 10 --retry-delay 5 --retry-connrefused --retry-all-errors --max-time 15 \
+              -o /dev/null -w "$path -> %{http_code}\n" "http://${dns}${path}"
+          done

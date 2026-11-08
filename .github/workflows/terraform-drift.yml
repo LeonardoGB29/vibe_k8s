@@ -1,0 +1,46 @@
+name: terraform-drift
+
+# Requiere OIDC (ver terraform.yml): inactivo en la cuenta actual.
+# Deteccion de deriva: cada dia compara el codigo con la infraestructura real.
+# Falla (y GitHub avisa) si alguien cambio algo a mano o si el codigo cambio y no
+# se aplico. Solo corre si la variable de repositorio DRIFT_CHECK vale "true";
+# activala cuando el entorno este desplegado (con la infraestructura apagada o
+# destruida el plan siempre saldria con diferencias).
+on:
+  schedule:
+    - cron: "17 9 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  drift:
+    if: vars.DRIFT_CHECK == 'true'
+    name: Deriva (${{ matrix.env }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        env: [desarrollo]
+    environment: ${{ matrix.env }}
+    env:
+      TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-2' }}
+    defaults:
+      run:
+        working-directory: vibe/terraform/envs/${{ matrix.env }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-2' }}
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.16.6
+      - name: init
+        run: terraform init -input=false -lockfile=readonly -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+      - name: plan (codigo de salida 2 = hay deriva)
+        run: terraform plan -input=false -detailed-exitcode -lock=false

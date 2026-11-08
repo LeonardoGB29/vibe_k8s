@@ -1,7 +1,10 @@
 name: terraform
 
-# Manual: AWS Academy entrega credenciales temporales que hay que actualizar en
-# el Environment del entorno elegido cada vez que se reinicia el laboratorio.
+# Manual. Requiere OIDC (rol github-vibe-terraform, enable_github_oidc=true), que las SCP de la
+# cuenta actual PROHIBEN: aqui Terraform se ejecuta en local (aws/deploy-aws.sh). Se conserva
+# para cuentas donde OIDC este permitido. No hay claves ni
+# tokens de sesion en GitHub. Requiere en cada Environment las variables
+# AWS_ROLE_ARN, TF_STATE_BUCKET y (opcional) AWS_REGION; ver vibe/terraform/README.md.
 on:
   workflow_dispatch:
     inputs:
@@ -15,9 +18,14 @@ on:
         type: choice
         options: [plan, apply, destroy]
         default: plan
+      confirm_destroy:
+        description: Solo para action=destroy, escribe el nombre del entorno
+        type: string
+        required: false
 
 permissions:
   contents: read
+  id-token: write
 
 concurrency:
   group: terraform-${{ inputs.target_environment }}
@@ -28,15 +36,22 @@ jobs:
     runs-on: ubuntu-latest
     environment: ${{ inputs.target_environment }}
     env:
-      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      AWS_SESSION_TOKEN: ${{ secrets.AWS_SESSION_TOKEN }}
-      AWS_DEFAULT_REGION: us-east-1
+      TF_VAR_region: ${{ vars.AWS_REGION || 'us-east-2' }}
     defaults:
       run:
         working-directory: vibe/terraform/envs/${{ inputs.target_environment }}
     steps:
+      - name: confirmar destroy
+        if: inputs.action == 'destroy' && inputs.confirm_destroy != inputs.target_environment
+        run: |
+          echo "::error::Para destruir ${{ inputs.target_environment }} escribe ese nombre en confirm_destroy."
+          exit 1
       - uses: actions/checkout@v4
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-2' }}
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.16.6
@@ -44,7 +59,14 @@ jobs:
         run: terraform init -input=false -lockfile=readonly -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
       - name: plan
         if: inputs.action != 'destroy'
-        run: terraform plan -input=false -out=tfplan
+        run: |
+          terraform plan -input=false -out=tfplan
+          {
+            echo "### terraform plan · ${{ inputs.target_environment }}"
+            echo '```'
+            terraform show -no-color tfplan | head -c 60000
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: apply
         if: inputs.action == 'apply'
         run: terraform apply -input=false tfplan

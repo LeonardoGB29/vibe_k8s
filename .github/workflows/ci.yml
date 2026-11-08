@@ -3,10 +3,14 @@ name: ci
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [main, develop]
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
   run:
@@ -23,6 +27,18 @@ jobs:
           python-version: "3.12"
       - name: Ejecutar pruebas
         working-directory: k8s-web
+        run: python -m unittest discover -s . -p 'test_*.py' -v
+
+  credit-guard-tests:
+    name: Pruebas del guardian de creditos
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Ejecutar pruebas
+        working-directory: vibe/terraform/account/credit_guard
         run: python -m unittest discover -s . -p 'test_*.py' -v
 
   manifests:
@@ -87,7 +103,8 @@ jobs:
       - name: Addons (ingress-nginx y KEDA)
         run: |
           kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/kind/deploy.yaml
-          kubectl apply --server-side -f https://github.com/kedacore/keda/releases/download/v2.21.0/keda-2.21.0.yaml
+          KEDA_VERSION="$(tr -d '[:space:]' < k8s/KEDA_VERSION)"
+          kubectl apply --server-side -f "https://github.com/kedacore/keda/releases/download/${KEDA_VERSION}/keda-${KEDA_VERSION#v}.yaml"
           kubectl wait --for=condition=Established crd/scaledobjects.keda.sh --timeout=180s
           kubectl -n keda rollout status deployment/keda-operator --timeout=180s
           kubectl -n keda rollout status deployment/keda-admission --timeout=180s
@@ -124,7 +141,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        dir: [bootstrap, envs/desarrollo, envs/staging, envs/produccion]
+        dir: [bootstrap, account, envs/desarrollo, envs/staging, envs/produccion]
     steps:
       - uses: actions/checkout@v4
       - uses: hashicorp/setup-terraform@v3
@@ -162,8 +179,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: config
-          # Terraform es la infraestructura activa. CloudFormation y k8s/legacy
-          # quedan documentados como históricos y no forman parte de este gate.
+          # Terraform es la infraestructura activa y se escanea completa.
           scan-ref: vibe/terraform
           version: v0.76.1
           severity: CRITICAL,HIGH
@@ -171,8 +187,8 @@ jobs:
 
   image-publish:
     name: Publish ${{ matrix.service }} image
-    needs: [manifests, dockerfiles, build, test-kind, terraform, security]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integracion_terraform')
+    needs: [manifests, dockerfiles, build, test-kind, terraform, security, credit-guard-tests]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -204,3 +220,45 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha,scope=${{ matrix.service }}
           cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+  # ---------- Entrega continua ----------
+  # Se activa con la variable de repositorio AUTO_DEPLOY=true (cuando el cluster de
+  # desarrollo existe y esta encendido). El mismo SHA que paso el CI y se publico
+  # en GHCR es el que se promueve: develop -> desarrollo; main -> staging -> produccion.
+  deploy-desarrollo:
+    name: Desplegar en desarrollo
+    needs: [image-publish]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop' && vars.AUTO_DEPLOY == 'true'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      commit_sha: ${{ github.sha }}
+      target_environment: desarrollo
+
+  deploy-staging:
+    name: Desplegar en staging
+    needs: [image-publish]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AUTO_DEPLOY == 'true'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      commit_sha: ${{ github.sha }}
+      target_environment: staging
+
+  # Configura "Required reviewers" en el Environment produccion: el job espera ahi
+  # la aprobacion de una persona antes de desplegar.
+  deploy-produccion:
+    name: Desplegar en producción
+    needs: [deploy-staging]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && vars.AUTO_DEPLOY == 'true'
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/deploy.yml
+    with:
+      commit_sha: ${{ github.sha }}
+      target_environment: produccion
