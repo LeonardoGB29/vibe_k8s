@@ -7,19 +7,27 @@ on:
         description: Commit SHA (GHCR tag) to deploy
         required: true
         type: string
+      target_environment:
+        description: Entorno Kubernetes de destino
+        required: true
+        type: choice
+        options:
+          - desarrollo
+          - staging
+          - produccion
 
 permissions:
   contents: read
   packages: read
 
 concurrency:
-  group: deploy-desarrollo
+  group: deploy-${{ inputs.target_environment }}
   cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment: desarrollo
+    environment: ${{ inputs.target_environment }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -48,6 +56,7 @@ jobs:
           IMAGE_TAG: ${{ inputs.image_tag }}
           IMAGE_OWNER: ${{ github.repository_owner }}
           RAW_BUCKET: ${{ steps.server.outputs.bucket }}
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
         run: |
           archive="vibe-${IMAGE_TAG}.tar.gz"
           git archive --format=tar.gz --output="$archive" "$IMAGE_TAG"
@@ -55,7 +64,7 @@ jobs:
           command_id=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
-            --parameters commands="sudo -iu ec2-user bash -lc 'aws s3 cp s3://${RAW_BUCKET}/deployment/${archive} ~/vibe-deploy.tar.gz && mkdir -p ~/vibe-deploy && tar -xzf ~/vibe-deploy.tar.gz -C ~/vibe-deploy && cd ~/vibe-deploy/vibe && IMAGE_TAG=${IMAGE_TAG} REGISTRY_OWNER=${IMAGE_OWNER,,} bash aws/deploy-ghcr.sh'" \
+            --parameters commands="sudo -iu ec2-user bash -lc 'aws s3 cp s3://${RAW_BUCKET}/deployment/${archive} ~/vibe-deploy.tar.gz && mkdir -p ~/vibe-deploy && tar -xzf ~/vibe-deploy.tar.gz -C ~/vibe-deploy && cd ~/vibe-deploy/vibe && TARGET_ENVIRONMENT=${TARGET_ENVIRONMENT} IMAGE_TAG=${IMAGE_TAG} REGISTRY_OWNER=${IMAGE_OWNER,,} bash aws/deploy-ghcr.sh'" \
             --query 'Command.CommandId' --output text)
           aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID"
           aws ssm get-command-invocation --command-id "$command_id" --instance-id "$INSTANCE_ID" --query StandardOutputContent --output text

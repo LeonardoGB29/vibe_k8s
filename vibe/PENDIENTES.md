@@ -29,9 +29,9 @@ credenciales temporales y comprueba que los servicios vuelvan a responder.
 - [x] Integrar el PR #1 `integracion_terraform` → `main`.
 - [ ] Revisar los PRs de Dependabot abiertos (#2, #3, #4 y #6); sus checks de IaC fallan en las ejecuciones actuales. El PR #5 está cerrado sin merge. Los PRs apuntan a la base `a941331`, anterior al `main` actual (`735b619`); actualizar/revalidar antes de integrar.
 - [ ] Confirmar permisos de GitHub; AWS se opera desde Lab IDE, no con secretos persistentes de Actions.
-- [ ] Crear el Environment `desarrollo`:
+- [ ] Crear los Environments `desarrollo`, `staging` y `produccion`:
   - Para ejecutar `terraform`/`deploy` desde Actions, actualizar los tres secretos temporales por sesión; nunca subirlos al repositorio.
-  - Variable: `TF_STATE_BUCKET`.
+  - Variable en cada Environment: `TF_STATE_BUCKET`.
 - [ ] Branch protection en `main`: exigir que el CI pase.
 
 ### Seguridad y escaneo IaC
@@ -76,7 +76,11 @@ credenciales temporales y comprueba que los servicios vuelvan a responder.
 - [x] Prueba de flujo worker/KEDA: 12 audios sintéticos procesados, cola pico 9, máximo 5 workers, 302,3 s; tracks de prueba eliminados y cola Redis verificada en cero. Evidencia: `C:\Users\Michael\vibe-evidence\20261028T074031Z-keda`.
 - [ ] Ejecutar una prueba controlada de caída de nodo/EC2; requiere credenciales AWS activas y verificar de antemano la ubicación de PVC locales.
 - [ ] Ejecutar OOM del worker solo con ventana de prueba y restauración de 512 MiB verificada; no se completó esta sesión.
-- [ ] Evaluar RDS PostgreSQL Single-AZ (el sandbox no permite Multi-AZ; clases nano–medium) frente al PostgreSQL del clúster, incluyendo costo y permisos.
+- [x] Revisada la disponibilidad de RDS PostgreSQL en Learner Lab: `describe-orderable-db-instance-options` devolvió clases pequeñas (`db.t3.micro`, `db.t3.small`, `db.t3.medium`) con `MultiAZ=True` en `us-east-1`. Añadido el módulo Terraform reutilizable y wrappers `staging` Single-AZ y `produccion` Multi-AZ; todavía no se han aplicado.
+- [ ] Revisar el costo con el presupuesto actual, confirmar permisos con un plan/apply controlado y desplegar staging/produccion por turnos; ejecutar y documentar prueba de failover.
+- [x] Crear overlays Kubernetes separados para desarrollo, staging y producción. Staging/producción omiten PostgreSQL local y usan namespaces independientes; CI renderiza los cuatro overlays (`test`, `desarrollo`, `staging`, `produccion`) y valida también los tres wrappers Terraform.
+- [ ] Crear usuario PostgreSQL de aplicación con permisos restringidos y distribuir `DATABASE_URL`/credenciales S3 a los Secrets aislados de staging y producción mediante un mecanismo seguro.
+- [ ] Desplegar staging y producción con `deploy.yml`; validar conectividad a sus RDS y guardar evidencia. El workflow reutiliza el clúster K3s de desarrollo.
 - [ ] Definir backups automatizados y probar restauración; PVC local no ofrece recuperación entre nodos.
 - [ ] Hacer durable y reintentable la cola de transcodificación (ACK tras completar, reintentos e idempotencia).
 - [x] Preparado Terraform para dashboard CloudWatch y alarmas de estado/CPU EC2, salud/latencia/HTTP 5xx del Classic ELB; SNS por correo opcional (`VIBE_ALERT_EMAIL`).
