@@ -22,6 +22,16 @@ infraestructura y la aplicación en una sola ejecución; solicita escribir
 bash aws/deploy-sandbox.sh
 ```
 
+Si Terraform no esta instalado, el script descarga Terraform 1.17.1 desde
+[HashiCorp](https://developer.hashicorp.com/terraform/install), verifica su SHA-256
+y lo instala en `~/.local/bin`, sin `sudo`. Admite Linux x86_64 y ARM64 y requiere
+`python3` para verificar y extraer el ZIP. El script agrega esa carpeta a su propio
+`PATH` y reutiliza la instalacion en las siguientes ejecuciones; si Terraform ya
+esta en el `PATH`, utiliza esa instalacion. Puedes elegir otra version compatible
+con `TERRAFORM_VERSION=1.17.1 bash aws/deploy-sandbox.sh`. Para usar el comando
+`terraform` directamente en la terminal despues, ejecuta
+`export PATH="$HOME/.local/bin:$PATH"`.
+
 El script crea/configura tres buckets con AWS CLI y usa Terraform para crear
 cuatro EC2, un ELB y los demás recursos. Este flujo evita la lectura de S3 Object
 Lock denegada al proveedor Terraform por la política del rol `voclabs`. Antes de
@@ -123,7 +133,24 @@ si se necesita Prometheus/Grafana. El visor consulta kubectl directamente.
 Los PVC locales no proporcionan recuperación de PostgreSQL/Redis en otro nodo;
 la cola BLPOP tampoco recupera automáticamente un trabajo interrumpido.
 
-## 4. Evidencias y limpieza
+## 4. CloudWatch
+
+Terraform crea el dashboard `vibe-desarrollo-operations` y alarmas de EC2/Classic
+ELB. Para recibir avisos por email, antes del despliegue en Lab IDE ejecuta:
+
+```bash
+export VIBE_ALERT_EMAIL="tu-correo@example.com"
+bash aws/deploy-sandbox.sh
+```
+
+Confirma la suscripción SNS desde el correo que envía AWS. Si no configuras
+`VIBE_ALERT_EMAIL`, las alarmas siguen visibles en CloudWatch pero no envían
+notificaciones. El dashboard y el listado de alarmas aparecen al final del
+despliegue. Las métricas del balanceador requieren tráfico para mostrar series.
+Memoria y logs de sistema/pods quedan pendientes porque el rol de EC2 del sandbox
+no se modifica para instalar CloudWatch Agent.
+
+## 5. Evidencias y limpieza
 
 Exportar resultados, capturas y código antes de terminar la sesión. El Sandbox
 elimina los datos y recursos al expirar, incluidos los buckets S3.
