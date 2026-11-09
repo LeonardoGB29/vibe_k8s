@@ -136,11 +136,15 @@ jobs:
           archive="vibe-${COMMIT_SHA}.tar.gz"
           git archive --format=tar.gz --output="$archive" "$COMMIT_SHA"
           aws s3 cp "$archive" "s3://${RAW_BUCKET}/deployment/${archive}"
+          # Comando que se ejecuta en el servidor como ec2-user. Se pasa a SSM como JSON: el formato
+          # abreviado de --parameters no admite comillas simples ni comas dentro del valor.
+          inner="export KUBECONFIG=/home/ec2-user/.kube/config && aws s3 cp s3://${RAW_BUCKET}/deployment/${archive} ~/vibe-deploy.tar.gz && rm -rf ~/vibe-deploy && mkdir -p ~/vibe-deploy && tar -xzf ~/vibe-deploy.tar.gz -C ~/vibe-deploy && cd ~/vibe-deploy/vibe && TARGET_ENVIRONMENT=${TARGET_ENVIRONMENT} IMAGE_TAG=${IMAGE_TAG} REGISTRY_OWNER=${IMAGE_OWNER,,} bash aws/deploy-ghcr.sh"
+          params=$(jq -nc --arg c "sudo -iu ec2-user bash -lc $(printf '%q' "$inner")" '{commands:[$c]}')
           command_id=$(aws ssm send-command \
             --instance-ids "$INSTANCE_ID" \
             --document-name AWS-RunShellScript \
             --timeout-seconds 1800 \
-            --parameters commands="sudo -iu ec2-user bash -lc 'aws s3 cp s3://${RAW_BUCKET}/deployment/${archive} ~/vibe-deploy.tar.gz && rm -rf ~/vibe-deploy && mkdir -p ~/vibe-deploy && tar -xzf ~/vibe-deploy.tar.gz -C ~/vibe-deploy && cd ~/vibe-deploy/vibe && TARGET_ENVIRONMENT=${TARGET_ENVIRONMENT} IMAGE_TAG=${IMAGE_TAG} REGISTRY_OWNER=${IMAGE_OWNER,,} bash aws/deploy-ghcr.sh'" \
+            --parameters "$params" \
             --query 'Command.CommandId' --output text)
           # `wait` devuelve error si el comando falla; seguimos para mostrar siempre la salida.
           aws ssm wait command-executed --command-id "$command_id" --instance-id "$INSTANCE_ID" || true
