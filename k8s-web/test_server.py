@@ -29,12 +29,45 @@ class CatalogTests(unittest.TestCase):
 
     def test_fixed_users_command_preserves_requested_concurrency_and_namespace(self):
         original = server.ARGS
-        server.ARGS = SimpleNamespace(ns="test-ns")
+        server.ARGS = SimpleNamespace(ns="test-ns", api="http://elb.example")
         try:
             command = server.make_command("users", {"vus": 777, "duration": "2m"})
+            self.assertNotIn("make", command)  # make no existe en Windows: se llama a Python directamente
             self.assertIn("VUS=777", command)
             self.assertIn("DURATION=2m", command)
-            self.assertIn("NS=test-ns", command)
+            self.assertIn("BASE_URL=http://elb.example", command)
+            self.assertIn("tests/k6/users.js", command)
+            worker = server.make_command("worker", {"uploads": 12})
+            self.assertEqual(worker[worker.index("--ns") + 1], "test-ns")
+            self.assertEqual(worker[worker.index("--api") + 1], "http://elb.example")
+        finally:
+            server.ARGS = original
+
+    def test_load_tests_only_in_staging_and_unrestricted_locally(self):
+        original = server.ARGS
+        try:
+            server.ARGS = SimpleNamespace(ns="vibe", env="local", api="http://localhost")
+            self.assertEqual(server.allowed_test_ids(), set(server.TEST_BY_ID))
+            self.assertIsNone(server.tests_blocked_reason())
+
+            server.ARGS = SimpleNamespace(ns="vibe-staging", env="staging", api="http://elb.example")
+            self.assertEqual(server.allowed_test_ids(), {"load", "stress", "spike", "users", "ramp", "worker"})
+            self.assertIsNone(server.tests_blocked_reason())
+
+            for env in ("desarrollo", "produccion"):
+                server.ARGS = SimpleNamespace(ns="vibe", env=env, api="http://elb.example")
+                self.assertIn("solo se ejecutan en staging", server.tests_blocked_reason())
+                with self.assertRaises(RuntimeError):
+                    server.TestManager().start("load", {"repetitions": 1})
+        finally:
+            server.ARGS = original
+
+    def test_destructive_scenarios_rejected_outside_local(self):
+        original = server.ARGS
+        server.ARGS = SimpleNamespace(ns="vibe-staging", env="staging", api="http://elb.example")
+        try:
+            with self.assertRaises(ValueError):
+                server.TestManager().start("node_failure", {})
         finally:
             server.ARGS = original
 
@@ -113,11 +146,17 @@ class CatalogTests(unittest.TestCase):
         server.ARGS = SimpleNamespace(ns="alternate")
         manager = server.TestManager()
         try:
-            with mock.patch.object(server.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")) as run:
+            with mock.patch.object(server.shutil, "which", return_value="k6"),                     mock.patch.object(server.subprocess, "run", return_value=SimpleNamespace(returncode=0, stdout="", stderr="")) as run:
                 manager._prepare("load", {})
             self.assertEqual(run.call_args.args[0][3], "alternate")
         finally:
             server.ARGS = original
+
+    def test_prepare_explains_missing_k6(self):
+        manager = server.TestManager()
+        with mock.patch.object(server.shutil, "which", return_value=None):
+            with self.assertRaisesRegex(RuntimeError, "winget install k6"):
+                manager._prepare("load", {})
 
     def test_node_recommendation_uses_current_placement(self):
         original = server.STATE["data"]

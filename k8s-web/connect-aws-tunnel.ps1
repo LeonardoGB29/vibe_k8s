@@ -157,7 +157,13 @@ try {
     $pythonArgumentValues = @()
     $pythonArgumentValues += $pythonPrefix
     $namespace = switch ($Environment) { 'staging' { 'vibe-staging' } 'produccion' { 'vibe-produccion' } default { 'vibe' } }
-    $pythonArgumentValues += @($serverPath, '--ns', $namespace, '--port', "$AppPort")
+    # URL publica del ELB del entorno: es el objetivo de las pruebas de carga (solo staging las permite).
+    $apiUrl = 'http://localhost'
+    $lbName = "vibe-$Environment-elb"
+    $lbDns = & aws elb describe-load-balancers --load-balancer-names $lbName --region $Region --query 'LoadBalancerDescriptions[0].DNSName' --output text 2>$null
+    if ($LASTEXITCODE -eq 0 -and $lbDns -and "$lbDns".Trim() -ne 'None') { $apiUrl = "http://$("$lbDns".Trim())" }
+    else { Write-Host "No pude resolver el ELB $lbName; las pruebas de carga apuntarian a $apiUrl." -ForegroundColor Yellow }
+    $pythonArgumentValues += @($serverPath, '--ns', $namespace, '--env', $Environment, '--api', $apiUrl, '--port', "$AppPort")
     $pythonArgs = ($pythonArgumentValues | ForEach-Object { Quote-ProcessArgument "$_" }) -join ' '
     $appProcess = Start-Process -FilePath $python.Source -ArgumentList $pythonArgs -WorkingDirectory $PSScriptRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $appStdout -RedirectStandardError $appStderr
     Start-Sleep -Seconds 2

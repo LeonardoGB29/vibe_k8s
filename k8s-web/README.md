@@ -57,10 +57,24 @@ La pestaña **Pruebas** ofrece escenarios predefinidos; no acepta comandos arbit
 Solo permite una ejecución principal a la vez y muestra estado, fase, duración, salida en
 tiempo real y evidencias generadas. Las simulaciones de fallo requieren confirmación.
 
-- Rendimiento: carga sostenida, estrés, pico y usuarios fijos.
+- Rendimiento: carga sostenida, estrés, pico, usuarios fijos y rampa.
 - Escalabilidad: carga de uploads y observación de KEDA.
 - Resiliencia: fallo de pod, caída de nodo, reinicio de PostgreSQL, rolling update y OOM.
 - Recuperación: restauración del límite de memoria del worker.
+
+**En AWS solo se usa en staging y solo con pruebas de carga.** El lanzador pasa al visor `--env`
+(el entorno) y `--api` (la URL del ELB de ese entorno, que es contra lo que se lanza la carga):
+
+- `desarrollo` y `produccion`: la pestaña muestra un aviso y no permite lanzar nada (desarrollo es
+  para comprobar que compila; producción no recibe carga artificial).
+- `staging`: se ofrecen Rendimiento y Escalabilidad. Las simulaciones de fallo (nodo, PostgreSQL,
+  rolling update, OOM) dependen de Docker/kind y solo están disponibles en el clúster local
+  (`python server.py`, sin `--env`).
+
+Los ensayos se lanzan llamando directamente a Python (`tools/run_k6.py`, `tools/run_worker_scale.py`),
+sin `make`, así que funcionan en Windows. Necesitas `k6` en el PATH (`winget install k6`); si falta, el
+visor lo explica. La carga sale de tu PC hacia el balanceador de staging: la latencia incluye tu conexión.
+Los resúmenes quedan en `vibe/results/k6/`.
 
 En la caída de nodo, la prueba comprueba que cada servicio afectado obtiene un pod
 nuevo asignado a otro nodo e informa su fase y si está `Ready` o `NotReady`.

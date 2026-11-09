@@ -14,8 +14,10 @@ import copy
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
+import sys
 import threading
 import time
 from collections import deque
@@ -167,6 +169,31 @@ def run_has_k6_slo_failure(test_id, started_epoch, results=None):
     return False
 
 
+# En AWS el centro de pruebas es una herramienta didactica de CARGA y solo se usa en staging:
+# desarrollo es para comprobar que compila y produccion no recibe carga artificial.
+# Las simulaciones de fallo (nodo, base de datos, rolling update, OOM) estan pensadas para kind
+# (docker/make) y solo se ofrecen con --env local.
+LOAD_TEST_GROUPS = {"Rendimiento", "Escalabilidad"}
+
+
+def current_env():
+    return getattr(ARGS, "env", "local") if ARGS else "local"
+
+
+def tests_blocked_reason():
+    env = current_env()
+    if env in ("desarrollo", "produccion"):
+        return (f"Las pruebas de carga solo se ejecutan en staging y estás conectado a {env}. "
+                "Abre el visor de staging con: Conectar VIBE AWS.cmd staging")
+    return None
+
+
+def allowed_test_ids():
+    if current_env() == "local":
+        return set(TEST_BY_ID)
+    return {item["id"] for item in TEST_CATALOG if item["group"] in LOAD_TEST_GROUPS}
+
+
 def test_catalog_view():
     """Return the catalog with node choices annotated from the latest cluster snapshot."""
     catalog = copy.deepcopy(TEST_CATALOG)
@@ -248,13 +275,25 @@ def normalize_params(test_id, supplied):
 
 def make_command(test_id, params):
     ns = ARGS.ns if ARGS else "vibe"
+    api = getattr(ARGS, "api", "http://localhost") if ARGS else "http://localhost"
+    py = sys.executable or "python3"
+
+    def k6(name, *extra):
+        # Mismo comando que `make k6-<name>`, sin depender de make (no existe en Windows).
+        env = [item for pair in (("--env", f"BASE_URL={api}"), *[("--env", e) for e in extra]) for item in pair]
+        return [py, "tools/run_k6.py", "--name", name, *env, f"tests/k6/{name}.js"]
+
+    direct = {
+        "load": k6("load"),
+        "stress": k6("stress"),
+        "spike": k6("spike"),
+        "users": k6("users", f"VUS={params.get('vus')}", f"DURATION={params.get('duration')}"),
+        "ramp": k6("ramp"),
+        "worker": [py, "tools/run_worker_scale.py", "--api", api, "--uploads", str(params.get("uploads")), "--ns", ns],
+    }
+    if test_id in direct:
+        return direct[test_id]
     commands = {
-        "load": ["make", "--silent", "k6-load"],
-        "stress": ["make", "--silent", "k6-stress"],
-        "spike": ["make", "--silent", "k6-spike"],
-        "users": ["make", "--silent", "k6-users", f"VUS={params.get('vus')}", f"DURATION={params.get('duration')}"],
-        "ramp": ["make", "--silent", "k6-ramp"],
-        "worker": ["make", "--silent", "worker-scale", f"UPLOADS={params.get('uploads')}"],
         "pod_failure": ["make", "--silent", "chaos-pod", f"INTERVAL={params.get('interval')}", f"TIMES={params.get('times')}", f"APP={params.get('app')}"],
         "node_failure": ["make", "--silent", "chaos-node", f"NODE={params.get('node')}", f"DOWN={params.get('down')}"],
         "db_failure": ["make", "--silent", "chaos-db"],
@@ -307,6 +346,12 @@ class TestManager:
     def start(self, test_id, supplied):
         if test_id not in TEST_BY_ID:
             raise ValueError("Prueba desconocida")
+        blocked = tests_blocked_reason()
+        if blocked:
+            raise RuntimeError(blocked)
+        if test_id not in allowed_test_ids():
+            raise ValueError(f"Esta prueba no está disponible en el entorno {current_env()}: "
+                             "aquí solo se ofrecen las pruebas de carga.")
         params = normalize_params(test_id, supplied)
         with self.lock:
             if self.current and self.current["status"] in {"starting", "running", "stopping"}:
@@ -400,6 +445,8 @@ class TestManager:
 
     def _prepare(self, test_id, params):
         context = {}
+        if test_id in K6_TEST_IDS and not shutil.which("k6"):
+            raise RuntimeError("No encuentro k6 en el PATH. Instálalo (winget install k6) y reinicia el visor.")
         try:
             cluster = subprocess.run(
                 ["kubectl", "get", "namespace", ARGS.ns if ARGS else "vibe", "--request-timeout=10s"],
@@ -1065,7 +1112,13 @@ class Handler(BaseHTTPRequestHandler):
             self.send_json(200, {"data": STATE["data"], "error": STATE["error"], "script": STATE["script"],
                                  "updated": STATE["updated"], "last_success": STATE["last_success"]})
         elif self.path == "/api/tests/catalog":
-            self.send_json(200, {"tests": test_catalog_view()})
+            allowed = allowed_test_ids()
+            blocked = tests_blocked_reason()
+            self.send_json(200, {
+                "tests": [] if blocked else [t for t in test_catalog_view() if t["id"] in allowed],
+                "blocked": blocked, "env": current_env(),
+                "target": None if current_env() == "local" else getattr(ARGS, "api", None),
+            })
         elif self.path == "/api/tests/status":
             self.send_json(200, TEST_MANAGER.status())
         elif self.path == "/api/k6/results":
@@ -1103,6 +1156,11 @@ def main():
     ap.add_argument("--port", type=int, default=8085)
     ap.add_argument("--ns", default="vibe")
     ap.add_argument("--interval", type=float, default=2.0)
+    ap.add_argument("--env", choices=("local", "desarrollo", "staging", "produccion"), default="local",
+                    help="entorno AWS al que apunta el visor; las pruebas de carga solo se permiten en staging "
+                         "(local = clúster kind, sin restricciones)")
+    ap.add_argument("--api", default="http://localhost",
+                    help="URL base de la aplicación contra la que se lanzan las pruebas de carga (ELB del entorno)")
     ap.add_argument("--vibe-dir", type=Path, default=HERE.parent / "vibe",
                     help="raíz del proyecto VIBE (por defecto, carpeta hermana)")
     ap.add_argument("--status-script", default=None,
@@ -1112,6 +1170,9 @@ def main():
         ap.error("--ns debe ser un nombre de namespace Kubernetes válido")
     if ARGS.port < 1 or ARGS.port > 65535 or ARGS.interval <= 0:
         ap.error("--port debe estar entre 1 y 65535 y --interval debe ser positivo")
+    if not re.fullmatch(r"https?://[A-Za-z0-9._:-]+(/.*)?", ARGS.api):
+        ap.error("--api debe ser una URL http(s) válida, por ejemplo http://localhost")
+    ARGS.api = ARGS.api.rstrip("/")
     VIBE_DIR = ARGS.vibe_dir.expanduser().resolve()
     if ARGS.status_script is None:
         ARGS.status_script = str(VIBE_DIR / "tools" / "cluster-status.sh")

@@ -167,7 +167,7 @@ nav [data-t="nodes"],nav [data-t="pods"],nav [data-t="net"],nav [data-t="deps"],
   <div data-p="events" hidden><div class="card"><h2>Últimos eventos</h2><div id="events"></div></div></div>
 
   <div data-p="tests" hidden>
-    <div class="card"><h2>Centro de pruebas</h2><p class="hint">Selecciona un escenario. Solo puede ejecutarse uno a la vez y las simulaciones de fallo siempre requieren confirmación.</p><div class="test-groups" id="test-groups"><p class="hint">cargando pruebas...</p></div></div>
+    <div class="card"><h2>Centro de pruebas</h2><p class="hint">Selecciona un escenario. Solo puede ejecutarse uno a la vez y las simulaciones de fallo siempre requieren confirmación.<b id="test-target"></b></p><div class="test-groups" id="test-groups"><p class="hint">cargando pruebas...</p></div></div>
     <div class="two">
       <div class="card">
         <h2>Configurar escenario</h2>
@@ -234,7 +234,11 @@ async function loadTestCatalog(){
   try{
     const response=await fetch("/api/tests/catalog");
     if(!response.ok)throw new Error(`HTTP ${response.status}`);
-    testCatalog=(await response.json()).tests||[];
+    const data=await response.json();
+    testCatalog=data.tests||[];
+    if(data.blocked){$("#test-groups").innerHTML=`<div class="err">${esc(data.blocked)}</div>`;return;}
+    const target=$("#test-target");
+    if(target)target.textContent=data.target?` Entorno: ${data.env}. Objetivo de la carga: ${data.target}`:"";
     renderTestCatalog();
     if(testCatalog.length)selectTest(testCatalog[0].id);
   }catch(error){$("#test-groups").innerHTML=`<div class="err">No se pudo cargar el catálogo: ${esc(error.message)}</div>`;}
