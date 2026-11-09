@@ -31,7 +31,7 @@ body {
 }
 button, input, select { font-family: inherit; font-size: inherit; color: inherit; }
 button { cursor: pointer; }
-button:focus-visible { outline: 3px solid var(--c4); outline-offset: 3px; }
+button:focus-visible { outline: 3px solid var(--c2); outline-offset: 3px; }
 svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .mono { font-variant-numeric: tabular-nums; letter-spacing: 0.02em; }
 
@@ -114,7 +114,7 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin
   height: 42px; padding: 0 18px; border-radius: 999px; border: 1px solid var(--line);
   background: var(--surface); color: var(--muted); font-weight: 500;
 }
-.chip:hover { color: var(--text); background: var(--surface-2); }
+.chip:hover { color: var(--text); background: var(--surface-2); border-color: var(--c2); }
 .chip.is-active { color: #fff; background: var(--grad); border-color: transparent; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
@@ -211,7 +211,7 @@ input[type=range] { accent-color: var(--c2); width: 110px; }
 .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin: 18px 0; }
 .fields label { display: flex; flex-direction: column; gap: 6px; font-size: 14px; color: var(--muted); }
 .fields input { height: 48px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); padding: 0 14px; outline: 0; color: var(--text); }
-.fields input:focus { border-color: var(--c3); }
+.fields input:focus { border-color: var(--c2); }
 .progress { position: relative; height: 40px; border-radius: 999px; background: var(--surface); overflow: hidden; margin-bottom: 14px; display: grid; place-items: center; }
 .progress .bar { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--grad); transition: width .2s; }
 .progress span { position: relative; font-size: 13px; font-weight: 700; }
