@@ -131,7 +131,11 @@ echo "Identidad:  $CALLER_ARN"
 echo "Región:     $REGION"
 echo "Entorno:    $ENVIRONMENT (clúster k3s propio)"
 echo "Se desplegarán las instancias EC2 del clúster, un ELB y los buckets S3 del entorno$( [[ "$ENVIRONMENT" == desarrollo ]] && echo . || echo " más un RDS PostgreSQL.")"
-echo "Costo aproximado encendido 24/7: ~2 a 4 USD/día según el entorno (unos 0,85 USD/día con las EC2 apagadas). Revisa tus créditos antes de continuar."
+echo "Costo aproximado encendido 24/7: ~2,8 USD/día (desarrollo, un nodo) a ~6 USD/día (producción); unos 0,85 USD/día con las EC2 apagadas. Revisa tus créditos antes de continuar."
+# Las imágenes se descargan de GHCR (no se construyen en el servidor): así también las
+# pueden usar los nodos que se añadan al escalar. Se resuelve antes de crear nada.
+resolve_image_tag || die "No hay imágenes publicadas que desplegar."
+echo "Imágenes:   ghcr.io/${REGISTRY_OWNER}/${REGISTRY_REPO}-*:${IMAGE_TAG}"
 read -r -p "Escribe desplegar para continuar: " CONFIRM
 [[ "$CONFIRM" == "desplegar" ]] || die "Despliegue cancelado."
 
@@ -156,7 +160,16 @@ terraform init -backend-config=backend.hcl -lockfile=readonly
 # dependan del token actual; con nodos existentes se detiene sin rotarlo.
 TOKEN_PARAMETER="/vibe-${ENVIRONMENT}/k3s-token"
 TOKEN_RESOURCE="module.cluster.aws_ssm_parameter.k3s_token"
-TERRAFORM_STATE="$(terraform state list)" || die "No pude leer el state Terraform; no continuare con una importacion automatica."
+# En el primer despliegue el state aun no existe: `terraform state list` falla con
+# "No state file was found!" y eso equivale a un state vacio, no a un error.
+if ! TERRAFORM_STATE="$(terraform state list 2>&1)"; then
+  if grep -q "No state file was found" <<< "$TERRAFORM_STATE"; then
+    TERRAFORM_STATE=""
+  else
+    echo "$TERRAFORM_STATE" >&2
+    die "No pude leer el state Terraform; no continuare con una importacion automatica."
+  fi
+fi
 if ! grep -Fxq "$TOKEN_RESOURCE" <<< "$TERRAFORM_STATE"; then
   if aws ssm get-parameter --name "$TOKEN_PARAMETER" --region "$REGION" >/dev/null 2>&1; then
     EXISTING_NODES="$(aws ec2 describe-instances \
@@ -229,28 +242,23 @@ if command -v cloud-init >/dev/null 2>&1; then
     exit 1
   fi
 fi
-if ! command -v docker >/dev/null 2>&1 || ! systemctl is-active --quiet docker; then
-  echo 'ERROR: Docker no quedó instalado/activo después de cloud-init.' >&2
-  tail -n 80 /var/log/cloud-init-output.log >&2 || true
-  exit 1
-fi
-docker system prune -af
 FREE_MIB=\$(df -Pm / | awk 'NR == 2 {print \$4}')
 echo \"Espacio libre en k3s-server: \${FREE_MIB} MiB\"
-if [ \"\$FREE_MIB\" -lt \${VIBE_MIN_SERVER_MIB:-6000} ]; then echo 'Espacio insuficiente en k3s-server para construir imágenes Docker (se requieren 6000 MiB libres).' >&2; exit 1; fi
+if [ \"\$FREE_MIB\" -lt \${VIBE_MIN_SERVER_MIB:-3000} ]; then echo 'Espacio insuficiente en k3s-server para las imágenes (se requieren 3000 MiB libres).' >&2; exit 1; fi
 aws s3 cp s3://${RAW_BUCKET}/deployment/vibe-aws.tar.gz /home/ec2-user/vibe-aws.tar.gz --region ${REGION}
 tar -xzf /home/ec2-user/vibe-aws.tar.gz -C /home/ec2-user
 rm -f /home/ec2-user/vibe-aws.tar.gz
 cd /home/ec2-user/vibe_k8s/vibe
 export KUBECONFIG=/home/ec2-user/.kube/config
 export VIBE_ENVIRONMENT=${ENVIRONMENT} VIBE_EXPECTED_NODES=${EXPECTED_NODES}
+export IMAGE_TAG=${IMAGE_TAG} REGISTRY_OWNER=${REGISTRY_OWNER} REGISTRY_REPO=${REGISTRY_REPO}
 bash aws/cluster-init.sh ${RAW_BUCKET} ${HLS_BUCKET}"
 jq -n \
   --arg id "$SERVER_ID" \
   --arg command "$REMOTE_SCRIPT" \
   '{InstanceIds:[$id],DocumentName:"AWS-RunShellScript",TimeoutSeconds:3600,Parameters:{commands:[$command],executionTimeout:["3600"]},Comment:"Despliegue VIBE"}' \
   > "$REQUEST_FILE"
-COMMAND_ID="$(aws ssm send-command --cli-input-json "file://$REQUEST_FILE" --query Command.CommandId --output text --region "$REGION")" \
+COMMAND_ID="$(aws ssm send-command --cli-input-json "$(cat "$REQUEST_FILE")" --query Command.CommandId --output text --region "$REGION")" \
   || die "No se pudo iniciar SSM Run Command. Verifica que el rol de los nodos y tu usuario tengan permisos de SSM."
 echo "Comando SSM: $COMMAND_ID"
 

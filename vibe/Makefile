@@ -14,7 +14,7 @@ MS_IMAGES := vibe-frontend:dev vibe-catalog-api:dev vibe-upload-api:dev vibe-str
         watch logs-ms grafana gen-audio seed compose compose-ms compose-down \
         k6-load k6-stress k6-spike k6-users k6-ramp k6-upload worker-scale \
         chaos-pod chaos-node chaos-db chaos-rolling chaos-oom chaos-oom-restore \
-        aws-up aws-down
+        aws-up aws-scale aws-down
 
 help: ## Muestra esta ayuda
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-18s\033[0m %s\n", $$1, $$2}'
@@ -97,6 +97,9 @@ grafana: ## Port-forward a Grafana (admin / vibe)
 # ---------- AWS ----------
 aws-up: ## Despliega un entorno en AWS (ENV=desarrollo|staging|produccion)
 	@bash aws/deploy-aws.sh $${ENV:-desarrollo}
+
+aws-scale: ## Escala los agentes de un entorno: make aws-scale ENV=staging AGENTS=3
+	@bash aws/scale-aws.sh $${ENV:-desarrollo} $${AGENTS:?Indica AGENTS=0..6}
 
 aws-down: ## Destruye la infraestructura Terraform (ENV=desarrollo|staging|produccion; conserva los buckets S3)
 	@bash aws/destroy-aws.sh $${ENV:-desarrollo}

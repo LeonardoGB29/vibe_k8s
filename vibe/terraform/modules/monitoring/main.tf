@@ -90,7 +90,7 @@ resource "aws_cloudwatch_metric_alarm" "elb_unhealthy_hosts" {
 
 resource "aws_cloudwatch_metric_alarm" "elb_healthy_hosts_low" {
   alarm_name          = "${var.name_prefix}-elb-healthy-hosts-low"
-  alarm_description   = "Quedan menos de dos agentes saludables registrados en el balanceador."
+  alarm_description   = "Quedan menos nodos saludables en el balanceador de los esperados (2, o 1 si el clúster tiene un solo nodo)."
   namespace           = "AWS/ELB"
   metric_name         = "HealthyHostCount"
   dimensions          = { LoadBalancerName = var.elb_name }
@@ -98,7 +98,7 @@ resource "aws_cloudwatch_metric_alarm" "elb_healthy_hosts_low" {
   period              = 60
   evaluation_periods  = 2
   datapoints_to_alarm = 1
-  threshold           = 2
+  threshold           = min(2, length(var.instance_ids))
   comparison_operator = "LessThanThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.alarm_actions

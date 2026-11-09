@@ -4,6 +4,7 @@ set -euo pipefail
 export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-2}"
 IP_CSV=$(kubectl get nodes -o json | jq -r '[.items[] | select(.metadata.name != "k3s-server") | .status.addresses[] | select(.type == "InternalIP") | .address] | join(",")')
 AGENT_COUNT=$(jq -Rr "if . == \"\" then 0 else (split(\",\") | length) end" <<< "$IP_CSV")
+(( AGENT_COUNT > 0 )) || { echo "El clúster no tiene agentes: el servidor ya tiene las imágenes, nada que distribuir."; exit 0; }
 IDS_JSON=$(aws ec2 describe-instances --filters "Name=private-ip-address,Values=$IP_CSV" Name=instance-state-name,Values=running --query 'Reservations[].Instances[].InstanceId' --output json)
 [[ "$(jq length <<< "$IDS_JSON")" == "$AGENT_COUNT" && "$AGENT_COUNT" -ge 1 ]] || { echo "Se esperaban $AGENT_COUNT EC2 agentes segun kubectl y EC2 encontro $(jq length <<< "$IDS_JSON")" >&2; exit 1; }
 IDS_CSV=$(jq -r 'join(",")' <<< "$IDS_JSON")

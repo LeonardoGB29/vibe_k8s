@@ -53,7 +53,7 @@ variable "k3s_version" {
 
 variable "server_instance_type" {
   type    = string
-  default = "t3.medium"
+  default = "c7i-flex.large"
 }
 
 variable "agent_instance_type" {
@@ -203,7 +203,10 @@ resource "aws_elb" "this" {
   name            = "${var.name_prefix}-elb"
   subnets         = var.subnet_ids
   security_groups = [var.lb_security_group_id]
-  instances       = [for a in aws_instance.agent : a.id]
+  # El servidor tambien ejecuta pods (k3s no lo marca como no programable) y el NodePort de
+  # Traefik responde en cualquier nodo: asi un clúster de un solo nodo (agent_count = 0) tiene
+  # trafico y al añadir agentes se reparte entre todos.
+  instances = concat([aws_instance.server.id], [for a in aws_instance.agent : a.id])
 
   cross_zone_load_balancing = true
   idle_timeout              = 120

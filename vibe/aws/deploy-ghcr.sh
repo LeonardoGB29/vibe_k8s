@@ -118,13 +118,15 @@ health_check() {
 kubectl kustomize "$DEPLOY_DIR" | kubectl apply -f -
 APPLIED=1
 
-for service in "${SERVICES[@]}"; do
-  kubectl -n "$NAMESPACE" rollout status "deployment/${service}" --timeout=240s
-done
-
+# En desarrollo la base de datos corre en el clúster: esperarla antes que las APIs
+# evita reinicios en el primer despliegue (en staging y producción es un RDS).
 if [[ "$TARGET_ENVIRONMENT" == "desarrollo" ]]; then
   kubectl -n "$NAMESPACE" rollout status statefulset/postgres --timeout=180s
 fi
+
+for service in "${SERVICES[@]}"; do
+  kubectl -n "$NAMESPACE" rollout status "deployment/${service}" --timeout=240s
+done
 
 health_check
 

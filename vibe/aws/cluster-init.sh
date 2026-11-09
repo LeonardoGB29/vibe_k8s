@@ -1,7 +1,8 @@
 #!/bin/bash
 # ==============================================================================
 # VIBE - Cluster Initialization Script (Runs on k3s-server)
-# Configura Ingress (NodePort 30080), KEDA, construye imágenes y despliega VIBE.
+# Configura Ingress (NodePort 30080), KEDA y despliega VIBE con las imágenes publicadas
+# en GHCR (IMAGE_TAG): cualquier nodo, incluidos los que se añadan después, las descarga.
 # ==============================================================================
 set -euo pipefail
 
@@ -9,7 +10,8 @@ RAW_BUCKET="${1:?Indica el bucket RawBucketName del stack}"
 HLS_BUCKET="${2:?Indica el bucket HlsBucketName del stack}"
 export KUBECONFIG="${KUBECONFIG:-$HOME/.kube/config}"
 export AWS_DEFAULT_REGION="${AWS_DEFAULT_REGION:-us-east-2}"
-export IMAGE_BUCKET="${IMAGE_BUCKET:-$RAW_BUCKET}"
+: "${IMAGE_TAG:?Indica IMAGE_TAG (sha-<commit> publicado en GHCR); lo fija aws/deploy-aws.sh}"
+: "${REGISTRY_OWNER:?Indica REGISTRY_OWNER (propietario en minusculas de las imagenes GHCR)}"
 
 # Entorno que se esta inicializando (cada uno tiene su propio clúster).
 VIBE_ENVIRONMENT="${VIBE_ENVIRONMENT:-desarrollo}"
@@ -57,21 +59,15 @@ kubectl -n keda rollout status deployment/keda-operator --timeout=180s
 kubectl -n keda rollout status deployment/keda-metrics-apiserver --timeout=180s
 kubectl -n keda rollout status deployment/keda-admission --timeout=180s
 
-echo "=== [4/6] Construyendo imágenes de microservicios y distribuyendo a los nodos ==="
-# Limpiar caché Docker anterior; las imágenes de producción se ejecutan en
-# containerd de k3s, así que Docker puede liberar capas de builds anteriores.
-docker system prune -af
-# Docker y las imágenes se guardan en el disco raíz del servidor. Revisa antes
-# de empezar para fallar con un mensaje claro y evitar dejar una carga a medias.
+echo "=== [4/6] Imágenes: se usarán las publicadas en GHCR (${IMAGE_TAG}) ==="
+# No se construye nada en el servidor: las imágenes las construye y publica el CI, y
+# cada nodo (también los agentes que se añadan al escalar) las descarga del registro.
 SERVER_FREE_MIB="$(df -Pm / | awk 'NR == 2 {print $4}')"
-echo "Espacio libre en k3s-server antes de construir: ${SERVER_FREE_MIB} MiB"
-if (( SERVER_FREE_MIB < ${VIBE_MIN_SERVER_MIB:-6000} )); then
-    echo "Espacio insuficiente en k3s-server: se requieren al menos ${VIBE_MIN_SERVER_MIB:-6000} MiB libres para construir las imágenes." >&2
+echo "Espacio libre en el servidor: ${SERVER_FREE_MIB} MiB"
+if (( SERVER_FREE_MIB < ${VIBE_MIN_SERVER_MIB:-3000} )); then
+    echo "Espacio insuficiente en el servidor: se requieren al menos ${VIBE_MIN_SERVER_MIB:-3000} MiB libres para las imágenes." >&2
     exit 1
 fi
-chmod +x "$SCRIPT_DIR/build-and-load.sh"
-"$SCRIPT_DIR/build-and-load.sh"
-docker system prune -af
 
 echo "=== [5/6] Configurando variables de entorno para AWS S3 ==="
 cd "$REPO_ROOT"
@@ -143,21 +139,14 @@ stringData:
   MINIO_SESSION_TOKEN: "$AWS_ST"
 EOF
 
-echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios (overlay $VIBE_ENVIRONMENT) ==="
-kubectl apply -k "k8s/overlays/$VIBE_ENVIRONMENT"
+echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios (overlay $VIBE_ENVIRONMENT, imágenes ${IMAGE_TAG}) ==="
+# deploy-ghcr.sh aplica el overlay con las imágenes de GHCR, espera los rollouts, comprueba
+# la salud y restaura la revisión anterior si algo falla (el mismo script que usa el CD).
+TARGET_ENVIRONMENT="$VIBE_ENVIRONMENT" IMAGE_TAG="$IMAGE_TAG" REGISTRY_OWNER="$REGISTRY_OWNER" \
+    REPO="${REGISTRY_REPO:-vibe_k8s}" bash "$SCRIPT_DIR/deploy-ghcr.sh"
 
-echo "Esperando que Postgres y Redis esten listos..."
-if [ "$VIBE_ENVIRONMENT" = "desarrollo" ]; then
-    kubectl rollout status statefulset/postgres -n "$NAMESPACE" --timeout=120s
-fi
+echo "Esperando que Redis este listo..."
 kubectl rollout status deployment/redis -n "$NAMESPACE" --timeout=60s
-
-echo "Esperando que todos los microservicios inicien..."
-kubectl rollout status deployment/frontend -n "$NAMESPACE" --timeout=120s
-kubectl rollout status deployment/catalog-api -n "$NAMESPACE" --timeout=120s
-kubectl rollout status deployment/upload-api -n "$NAMESPACE" --timeout=120s
-kubectl rollout status deployment/stream-api -n "$NAMESPACE" --timeout=120s
-kubectl rollout status deployment/worker -n "$NAMESPACE" --timeout=120s
 
 echo "=========================================================="
 echo " 🎉 VIBE Microservicios desplegados exitosamente en AWS!"

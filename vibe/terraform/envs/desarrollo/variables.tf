@@ -21,11 +21,11 @@ variable "k3s_version" {
 
 variable "server_instance_type" {
   type    = string
-  default = "t3.medium"
+  default = "c7i-flex.large"
 
   validation {
-    condition     = contains(["t3.medium", "t2.medium"], var.server_instance_type)
-    error_message = "El servidor construye imagenes y corre el control plane: usa t3.medium o t2.medium."
+    condition     = contains(["c7i-flex.large", "m7i-flex.large", "t3.medium", "t2.medium"], var.server_instance_type)
+    error_message = "El servidor construye imagenes y corre el control plane (>= 4 GB): c7i-flex.large o m7i-flex.large en el plan gratuito, o t3.medium/t2.medium en una cuenta de pago."
   }
 }
 
@@ -40,12 +40,13 @@ variable "agent_instance_type" {
 }
 
 variable "agent_count" {
-  type    = number
-  default = 1
+  description = "Agentes k3s (desarrollo). 0 = un solo nodo; sube el valor (aws/scale-aws.sh) para escalar horizontalmente."
+  type        = number
+  default     = 0
 
   validation {
-    condition     = var.agent_count >= 1 && var.agent_count <= 6
-    error_message = "agent_count debe estar entre 1 y 6."
+    condition     = var.agent_count >= 0 && var.agent_count <= 6
+    error_message = "agent_count debe estar entre 0 y 6 (0 = un solo nodo: el servidor ejecuta también los pods)."
   }
 }
 
