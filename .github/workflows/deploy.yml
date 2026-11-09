@@ -20,7 +20,7 @@ on:
           - desarrollo
           - staging
           - produccion
-  # Lo invoca ci.yml (CD automatico) con el mismo SHA que acaba de pasar el CI.
+  # Lo invoca ci.yml (CD automatico) con el SHA que acaba de pasar el CI en la rama del entorno.
   workflow_call:
     inputs:
       commit_sha:
@@ -29,6 +29,12 @@ on:
       target_environment:
         required: true
         type: string
+      # staging y produccion se levantan a demanda: si su clúster esta apagado, el despliegue
+      # automatico termina con un aviso en vez de fallar. En el lanzamiento manual siempre falla.
+      skip_if_down:
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -73,6 +79,16 @@ jobs:
               || { echo "::error::No existe $image. ¿Termino el job image-publish de ese commit?"; exit 1; }
             echo "ok $image"
           done
+      - name: Comprobar que los secretos de AWS llegan al job
+        env:
+          AWS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        run: |
+          if [[ -z "$AWS_KEY_ID" || -z "$AWS_SECRET" ]]; then
+            echo "::error::Faltan AWS_ACCESS_KEY_ID y/o AWS_SECRET_ACCESS_KEY para el Environment '${TARGET_ENVIRONMENT}'. Créalos en Settings > Environments > ${TARGET_ENVIRONMENT} > Environment secrets (cada Environment guarda los suyos; el nombre debe coincidir exactamente) y vuelve a lanzar el workflow."
+            exit 1
+          fi
+          echo "Secretos de AWS presentes para ${TARGET_ENVIRONMENT}."
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -81,12 +97,23 @@ jobs:
           aws-region: ${{ env.AWS_REGION }}
       - name: Localizar el servidor y comprobar SSM
         id: server
+        env:
+          SKIP_IF_DOWN: ${{ inputs.skip_if_down }}
         run: |
           account=$(aws sts get-caller-identity --query Account --output text)
           id=$(aws ec2 describe-instances \
             --filters "Name=tag:Name,Values=vibe-${TARGET_ENVIRONMENT}-k3s-server" "Name=instance-state-name,Values=running" \
             --query 'Reservations[0].Instances[0].InstanceId' --output text)
           if [[ "$id" == "None" || -z "$id" ]]; then
+            if [[ "$SKIP_IF_DOWN" == "true" ]]; then
+              echo "::warning::El clúster de ${TARGET_ENVIRONMENT} esta apagado: NO se desplego. El cambio ya esta en la rama. Levanta el entorno (aws/deploy-aws.sh ${TARGET_ENVIRONMENT}) o lanza el workflow deploy con este SHA cuando lo necesites."
+              {
+                echo "### ⚠️ ${TARGET_ENVIRONMENT}: sin desplegar"
+                echo "El servidor \`vibe-${TARGET_ENVIRONMENT}-k3s-server\` no esta encendido. SHA: \`${COMMIT_SHA}\`."
+              } >> "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
             echo "::error::El servidor k3s de ${TARGET_ENVIRONMENT} no esta encendido. Despliega el entorno con aws/deploy-aws.sh ${TARGET_ENVIRONMENT} o enciende las EC2 (puede haberlas pausado el guardian de creditos)."
             exit 1
           fi
@@ -99,6 +126,7 @@ jobs:
           echo "id=$id" >> "$GITHUB_OUTPUT"
           echo "bucket=vibe-${TARGET_ENVIRONMENT}-audio-raw-${account}" >> "$GITHUB_OUTPUT"
       - name: Deploy with SSM
+        if: steps.server.outputs.skip != 'true'
         env:
           INSTANCE_ID: ${{ steps.server.outputs.id }}
           IMAGE_OWNER: ${{ github.repository_owner }}
@@ -121,6 +149,7 @@ jobs:
           [[ "$(echo "$invocation" | jq -r .Status)" == "Success" ]] \
             || { echo "::error::El despliegue fallo (deploy-ghcr.sh restauro la revision anterior si llego a aplicar cambios)."; exit 1; }
       - name: Comprobar la URL publica
+        if: steps.server.outputs.skip != 'true'
         run: |
           dns=$(aws elb describe-load-balancers --load-balancer-names vibe-${{ inputs.target_environment }}-elb \
             --query 'LoadBalancerDescriptions[0].DNSName' --output text)
