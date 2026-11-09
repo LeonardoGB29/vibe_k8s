@@ -63,6 +63,50 @@ jobs:
         working-directory: vibe/terraform/account/credit_guard
         run: python -m unittest discover -s . -p 'test_*.py' -v
 
+  unit-tests:
+    name: Pruebas ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [catalog-api, stream-api]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: vibe/services/${{ matrix.service }}/requirements.txt
+      - name: Instalar dependencias
+        run: |
+          pip install -r vibe/services/${{ matrix.service }}/requirements.txt -r vibe/services/${{ matrix.service }}/tests/requirements-test.txt
+      - name: Ejecutar pruebas (unitarias e integración)
+        working-directory: vibe/services/${{ matrix.service }}
+        run: python -m pytest tests -v --junitxml=junit.xml
+      - name: Resumen en la página del run
+        if: always()
+        working-directory: vibe/services/${{ matrix.service }}
+        run: |
+          python - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import xml.etree.ElementTree as ET, pathlib
+          p = pathlib.Path("junit.xml")
+          if not p.exists():
+              print("### ❌ ${{ matrix.service }}: no se generó el reporte")
+          else:
+              suite = ET.parse(p).getroot()
+              suite = suite if suite.tag == "testsuite" else suite.find("testsuite")
+              t, f, e, s = (int(suite.get(k, 0)) for k in ("tests", "failures", "errors", "skipped"))
+              icono = "✅" if f + e == 0 else "❌"
+              print(f"### {icono} ${{ matrix.service }}: {t} pruebas, {f} fallos, {e} errores, {s} omitidas")
+          PY
+      - name: Publicar reporte JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.service }}
+          path: vibe/services/${{ matrix.service }}/junit.xml
+          if-no-files-found: warn
+
   manifests:
     name: Kubernetes manifests
     runs-on: ubuntu-latest
@@ -209,7 +253,7 @@ jobs:
 
   image-publish:
     name: Publish ${{ matrix.service }} image
-    needs: [manifests, dockerfiles, build, test-kind, terraform, security, credit-guard-tests]
+    needs: [manifests, dockerfiles, build, test-kind, terraform, security, credit-guard-tests, unit-tests, k8s-web-tests]
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/staging' || github.ref == 'refs/heads/develop')
     runs-on: ubuntu-latest
     permissions:
@@ -263,6 +307,46 @@ jobs:
       commit_sha: ${{ github.sha }}
       target_environment: desarrollo
       skip_if_down: true
+
+  # Pruebas de integración contra la aplicación recién desplegada en desarrollo (caja negra, vía ELB).
+  # Si fallan, el run queda en rojo: el despliegue ya se hizo, así que el fallo avisa que hay que revertir.
+  integration-desarrollo:
+    name: Pruebas de integración en desarrollo
+    needs: [deploy-desarrollo]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/develop' && vars.AUTO_DEPLOY == 'true'
+    runs-on: ubuntu-latest
+    environment: desarrollo
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Configurar AWS (solo para localizar el ELB)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION || 'us-east-2' }}
+      - name: Obtener la URL del ELB de desarrollo
+        id: elb
+        run: |
+          dns=$(aws elb describe-load-balancers --load-balancer-names vibe-desarrollo-elb \
+            --query 'LoadBalancerDescriptions[0].DNSName' --output text)
+          echo "url=http://${dns}" >> "$GITHUB_OUTPUT"
+      - name: Instalar dependencias de las pruebas
+        run: pip install -r vibe/tests/live/requirements.txt
+      - name: Ejecutar pruebas de integración contra desarrollo
+        working-directory: vibe
+        env:
+          BASE_URL: ${{ steps.elb.outputs.url }}
+        run: python -m pytest tests/live -v --junitxml=junit-live.xml
+      - name: Publicar reporte JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-integracion-desarrollo
+          path: vibe/junit-live.xml
+          if-no-files-found: warn
 
   deploy-staging:
     name: Desplegar en staging
