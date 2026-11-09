@@ -265,7 +265,7 @@ echo "Comando SSM: $COMMAND_ID"
 DEADLINE=$((SECONDS + 3900))
 while true; do
   INVOCATION="$(aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$SERVER_ID" --output json --region "$REGION" 2>/dev/null || true)"
-  STATUS="$(jq -r '.Status // "Pending"' <<< "$INVOCATION")"
+  STATUS="$(jq -r '.Status // "Pending"' <<< "$INVOCATION" 2>/dev/null || echo Pending)"
   case "$STATUS" in
     Success) break ;;
     Failed|Cancelled|TimedOut|Cancelling)

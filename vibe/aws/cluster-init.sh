@@ -125,6 +125,13 @@ stringData:
   DATABASE_URL: "${DATABASE_URL}"
 EOF
 
+# kubectl apply no elimina claves que ya existian en el Secret: se borran las claves de S3 de
+# despliegues anteriores (credenciales temporales caducadas). Cada una por separado: el parche
+# JSON falla entero si falta alguna.
+for key in MINIO_ACCESS_KEY MINIO_SECRET_KEY MINIO_SESSION_TOKEN; do
+    kubectl -n "$NAMESPACE" patch secret vibe-secrets --type=json         -p "[{\"op\":\"remove\",\"path\":\"/data/${key}\"}]" >/dev/null 2>&1 || true
+done
+
 echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios (overlay $VIBE_ENVIRONMENT, imágenes ${IMAGE_TAG}) ==="
 # deploy-ghcr.sh aplica el overlay con las imágenes de GHCR, espera los rollouts, comprueba
 # la salud y restaura la revisión anterior si algo falla (el mismo script que usa el CD).
@@ -134,8 +141,17 @@ TARGET_ENVIRONMENT="$VIBE_ENVIRONMENT" IMAGE_TAG="$IMAGE_TAG" REGISTRY_OWNER="$R
 echo "Esperando que Redis este listo..."
 kubectl rollout status deployment/redis -n "$NAMESPACE" --timeout=60s
 
+# Los pods solo leen vibe-config y vibe-secrets al arrancar: se reinician para aplicar cambios de
+# configuracion (por ejemplo MINIO_AUTH). Si ya estaban al dia, es un reinicio rapido y sin cortes.
+for d in frontend catalog-api upload-api stream-api worker; do
+    kubectl -n "$NAMESPACE" rollout restart "deployment/$d"
+done
+for d in frontend catalog-api upload-api stream-api worker; do
+    kubectl -n "$NAMESPACE" rollout status "deployment/$d" --timeout=240s
+done
+
 echo "=========================================================="
-echo " 🎉 VIBE Microservicios desplegados exitosamente en AWS!"
+echo " VIBE Microservicios desplegados exitosamente en AWS!"
 echo "=========================================================="
 kubectl get pods -n "$NAMESPACE" -o wide
 echo ""

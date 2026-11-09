@@ -14,9 +14,9 @@ _client_kwargs = {
 if config.MINIO_AUTH == "instance-role":
     # AWS: credenciales temporales del rol de la EC2 (IMDSv2). El cliente las renueva solo antes de
     # que caduquen, asi que no hay claves ni tokens copiados a ningun Secret.
-    from minio.credentials import IamAwsProvider
+    from instance_credentials import InstanceRoleProvider
 
-    _client_kwargs["credentials"] = IamAwsProvider()
+    _client_kwargs["credentials"] = InstanceRoleProvider()
 else:
     # Local (kind/docker compose) con MinIO: claves estaticas.
     _client_kwargs["access_key"] = config.MINIO_ACCESS_KEY

@@ -105,5 +105,5 @@ aws() {
     case "$a" in /tmp/*|/c/*|/d/*) a="$(cygpath -w "$a")" ;; esac
     args+=("$a")
   done
-  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" command aws "${args[@]}"
+  PYTHONIOENCODING=utf-8 PYTHONUTF8=1 MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" command aws "${args[@]}"
 }
