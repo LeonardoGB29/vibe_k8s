@@ -65,6 +65,33 @@ ASG_NAME="vibe-${VIBE_ENVIRONMENT}-k3s-agents"
 if [ "$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
         --query 'length(AutoScalingGroups)' --output text 2>/dev/null || echo 0)" = "1" ]; then
     echo "=== [3b/6] Instalando Cluster Autoscaler (ASG $ASG_NAME) ==="
+    # El Cluster Autoscaler exige que TODOS los nodos tengan providerID de AWS (aws:///<zona>/<instancia>) y
+    # aborta el ciclo entero ("wrong id") si uno tiene otro. k3s registra al servidor como k3s://<nombre>, asi
+    # que se re-registra una vez con el providerID de AWS (los agentes del ASG ya lo llevan desde su user-data).
+    # Se hace aqui y no en el user-data del servidor para no obligar a Terraform a parar/arrancar la instancia.
+    IMDS_TOKEN="$(curl -sf -X PUT http://169.254.169.254/latest/api/token -H 'X-aws-ec2-metadata-token-ttl-seconds: 120')"
+    imds() { curl -sf -H "X-aws-ec2-metadata-token: $IMDS_TOKEN" "http://169.254.169.254/latest/meta-data/$1"; }
+    WANT_PID="aws:///$(imds placement/availability-zone)/$(imds instance-id)"
+    SERVER_NODE="$(kubectl get nodes -l node-role.kubernetes.io/control-plane=true -o jsonpath='{.items[0].metadata.name}')"
+    HAVE_PID="$(kubectl get node "$SERVER_NODE" -o jsonpath='{.spec.providerID}')"
+    if [ "$HAVE_PID" != "$WANT_PID" ]; then
+        echo "El servidor tiene providerID '$HAVE_PID': se re-registra como '$WANT_PID' (corte breve de la aplicacion)."
+        sudo install -d /etc/rancher/k3s/config.yaml.d
+        printf 'kubelet-arg:\n  - provider-id=%s\n' "$WANT_PID" | sudo tee /etc/rancher/k3s/config.yaml.d/10-provider-id.yaml >/dev/null
+        # El providerID de un Node no se puede cambiar: se borra el objeto y k3s lo vuelve a crear al reiniciar.
+        kubectl delete node "$SERVER_NODE" --wait=false
+        sudo systemctl restart k3s
+        PID_DEADLINE=$((SECONDS + 300))
+        until [ "$(kubectl get node "$SERVER_NODE" -o jsonpath='{.spec.providerID}' 2>/dev/null || true)" = "$WANT_PID" ] \
+              && kubectl get node "$SERVER_NODE" --no-headers 2>/dev/null | grep -q ' Ready'; do
+            if (( SECONDS >= PID_DEADLINE )); then
+                echo "El servidor no volvio Ready con providerID $WANT_PID en 5 minutos" >&2
+                exit 1
+            fi
+            sleep 5
+        done
+        echo "Servidor re-registrado con providerID $WANT_PID."
+    fi
     sed -e "s/__CLUSTER_NAME__/vibe-${VIBE_ENVIRONMENT}/g" -e "s/__REGION__/${AWS_DEFAULT_REGION}/g" \
         "$SCRIPT_DIR/cluster-autoscaler.yaml" | kubectl apply -f -
     kubectl -n kube-system rollout status deployment/cluster-autoscaler --timeout=180s

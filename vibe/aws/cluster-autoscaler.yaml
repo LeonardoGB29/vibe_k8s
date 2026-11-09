@@ -171,7 +171,8 @@ spec:
               # alpine/k8s trae kubectl, aws-cli y jq; el rol de la instancia da los permisos de AWS (IMDSv2, hop limit 2).
               image: alpine/k8s:1.31.4
               env:
-                - name: AWS_REGION
+                # El CLI de AWS lee AWS_DEFAULT_REGION (AWS_REGION solo lo usan los SDK).
+                - name: AWS_DEFAULT_REGION
                   value: __REGION__
                 - name: ASG_NAME
                   value: __CLUSTER_NAME__-k3s-agents
