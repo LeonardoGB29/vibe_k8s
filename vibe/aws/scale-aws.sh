@@ -12,6 +12,9 @@
 #  - Autoescalado (staging, con Auto Scaling Group + Cluster Autoscaler): el numero es el MINIMO del grupo.
 #    Subirlo crea agentes ya; bajarlo vacia y termina los sobrantes. Aunque lo dejes en 0, el Cluster
 #    Autoscaler puede volver a añadir agentes (hasta agent_max) si hay pods sin sitio.
+# La CLI de AWS en Windows falla con 'charmap' al imprimir salidas con caracteres no ASCII (p. ej. flechas de SSM).
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

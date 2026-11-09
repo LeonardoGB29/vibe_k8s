@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
 # Despliega un entorno de VIBE (Terraform + k3s): bash aws/deploy-aws.sh [desarrollo|staging|produccion] (por defecto desarrollo). Cada entorno tiene su propio clúster. Requiere haber ejecutado antes aws/init-account.sh.
+# La CLI de AWS en Windows falla con 'charmap' al imprimir salidas con caracteres no ASCII (p. ej. flechas de SSM).
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
 set -Eeuo pipefail
 
 REGION="${AWS_DEFAULT_REGION:-${AWS_REGION:-us-east-2}}"

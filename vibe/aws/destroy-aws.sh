@@ -3,6 +3,9 @@
 # Terraform pide confirmacion interactiva. Los buckets S3 (state y audio) los crea
 # deploy-aws.sh con AWS CLI y NO se borran aqui: vacialos/eliminalos a mano
 # si de verdad quieres limpiar la cuenta.
+# La CLI de AWS en Windows falla con 'charmap' al imprimir salidas con caracteres no ASCII (p. ej. flechas de SSM).
+export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
+
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
