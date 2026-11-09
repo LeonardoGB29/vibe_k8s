@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
+    # Entorno al que conectarse: cada uno tiene su propio clúster y namespace.
+    [ValidateSet('desarrollo', 'staging', 'produccion')]
+    [string]$Environment = 'desarrollo',
     [string]$Region = $(if ($env:AWS_DEFAULT_REGION) { $env:AWS_DEFAULT_REGION } else { 'us-east-2' }),
-    [string]$InstanceName = $(if ($env:VIBE_K3S_SERVER_TAG) { $env:VIBE_K3S_SERVER_TAG } else { 'vibe-desarrollo-k3s-server' }),
+    [string]$InstanceName = $(if ($env:VIBE_K3S_SERVER_TAG) { $env:VIBE_K3S_SERVER_TAG } else { "vibe-$Environment-k3s-server" }),
     [string]$ExpectedAccountId = $env:VIBE_AWS_ACCOUNT_ID,
     [string]$RemoteHost = '',
     [int]$RemotePort = 6443,
@@ -153,7 +156,8 @@ try {
 
     $pythonArgumentValues = @()
     $pythonArgumentValues += $pythonPrefix
-    $pythonArgumentValues += @($serverPath, '--ns', 'vibe', '--port', "$AppPort")
+    $namespace = switch ($Environment) { 'staging' { 'vibe-staging' } 'produccion' { 'vibe-produccion' } default { 'vibe' } }
+    $pythonArgumentValues += @($serverPath, '--ns', $namespace, '--port', "$AppPort")
     $pythonArgs = ($pythonArgumentValues | ForEach-Object { Quote-ProcessArgument "$_" }) -join ' '
     $appProcess = Start-Process -FilePath $python.Source -ArgumentList $pythonArgs -WorkingDirectory $PSScriptRoot -PassThru -WindowStyle Hidden -RedirectStandardOutput $appStdout -RedirectStandardError $appStderr
     Start-Sleep -Seconds 2

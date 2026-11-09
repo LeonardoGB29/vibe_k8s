@@ -28,6 +28,18 @@ cuando la sesión expire hay que iniciar otra (`aws login`).
 Se puede configurar `AWS_DEFAULT_REGION`, `VIBE_K3S_SERVER_TAG` y, opcionalmente,
 `VIBE_AWS_ACCOUNT_ID` para adaptar la conexion a otro entorno.
 
+Cada entorno tiene su propio clúster y namespace. Por defecto el lanzador se conecta a
+`desarrollo` (namespace `vibe`); para otro entorno pásalo como argumento:
+
+```
+"Conectar VIBE AWS.cmd" staging       # namespace vibe-staging
+"Conectar VIBE AWS.cmd" produccion    # namespace vibe-produccion
+```
+
+(equivale a `powershell -File connect-aws-tunnel.ps1 -Environment staging`). El clúster de ese
+entorno tiene que estar desplegado y encendido.
+
+
 | Pestaña | Qué muestra |
 |---|---|
 | Arquitectura | Diagrama generado en vivo: Ingress → Services → Deployments/StatefulSets → Pods → PVCs, con HPA y KEDA sobre lo que escalan |
