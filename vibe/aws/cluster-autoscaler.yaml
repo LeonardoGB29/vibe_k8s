@@ -1,0 +1,202 @@
+# Cluster Autoscaler para k3s en AWS (mas la limpieza de nodos huerfanos al final): añade o quita agentes (Auto Scaling Group) segun haya
+# pods Pending por falta de recursos o nodos sobrantes. Descubre el ASG por las etiquetas
+# k8s.io/cluster-autoscaler/enabled y k8s.io/cluster-autoscaler/__CLUSTER_NAME__.
+# Usa el rol de la instancia (IMDSv2, hop limit 2); cluster-init.sh sustituye los marcadores.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: cluster-autoscaler
+rules:
+  - apiGroups: [""]
+    resources: [events, endpoints]
+    verbs: [create, patch]
+  - apiGroups: [""]
+    resources: [pods/eviction]
+    verbs: [create]
+  - apiGroups: [""]
+    resources: [pods/status]
+    verbs: [update]
+  - apiGroups: [""]
+    resources: [endpoints]
+    resourceNames: [cluster-autoscaler]
+    verbs: [get, update]
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [watch, list, get, update, delete]
+  - apiGroups: [""]
+    resources: [namespaces, pods, services, replicationcontrollers, persistentvolumeclaims, persistentvolumes]
+    verbs: [watch, list, get]
+  - apiGroups: [batch, extensions]
+    resources: [jobs]
+    verbs: [get, list, watch, patch]
+  - apiGroups: [policy]
+    resources: [poddisruptionbudgets]
+    verbs: [watch, list]
+  - apiGroups: [apps]
+    resources: [statefulsets, replicasets, daemonsets]
+    verbs: [watch, list, get]
+  - apiGroups: [storage.k8s.io]
+    resources: [storageclasses, csinodes, csidrivers, csistoragecapacities, volumeattachments]
+    verbs: [watch, list, get]
+  - apiGroups: [coordination.k8s.io]
+    resources: [leases]
+    verbs: [create]
+  - apiGroups: [coordination.k8s.io]
+    resourceNames: [cluster-autoscaler]
+    resources: [leases]
+    verbs: [get, update]
+  - apiGroups: [""]
+    resources: [configmaps]
+    verbs: [create, list, watch]
+  - apiGroups: [""]
+    resources: [configmaps]
+    resourceNames: [cluster-autoscaler-status, cluster-autoscaler-priority-expander]
+    verbs: [delete, get, update, watch]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: cluster-autoscaler
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-autoscaler
+subjects:
+  - kind: ServiceAccount
+    name: cluster-autoscaler
+    namespace: kube-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-autoscaler
+  namespace: kube-system
+  labels:
+    app: cluster-autoscaler
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: cluster-autoscaler
+  template:
+    metadata:
+      labels:
+        app: cluster-autoscaler
+    spec:
+      serviceAccountName: cluster-autoscaler
+      priorityClassName: system-cluster-critical
+      # El servidor no pertenece al ASG y nunca se retira: ahi corre siempre el autoscaler.
+      nodeSelector:
+        node-role.kubernetes.io/control-plane: "true"
+      containers:
+        - name: cluster-autoscaler
+          image: registry.k8s.io/autoscaling/cluster-autoscaler:v1.31.1
+          command:
+            - ./cluster-autoscaler
+            - --v=2
+            - --cloud-provider=aws
+            - --skip-nodes-with-local-storage=false
+            - --expander=least-waste
+            - --balance-similar-node-groups
+            - --scale-down-unneeded-time=3m
+            - --scale-down-delay-after-add=3m
+            - --node-group-auto-discovery=asg:tag=k8s.io/cluster-autoscaler/enabled,k8s.io/cluster-autoscaler/__CLUSTER_NAME__
+          env:
+            - name: AWS_REGION
+              value: __REGION__
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 200m, memory: 300Mi }
+---
+# Limpieza de nodos huerfanos. k3s no trae cloud-controller-manager, asi que cuando el ASG termina una
+# instancia (o Terraform destruye agentes viejos) su objeto Node queda en NotReady para siempre.
+# Cada 2 minutos se borran los Node de agentes que NO estan Ready y cuya instancia ya no pertenece al
+# ASG. Un nodo Ready o una instancia aun viva nunca se tocan, y si AWS no responde no se borra nada.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: node-pruner
+  namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: node-pruner
+rules:
+  - apiGroups: [""]
+    resources: [nodes]
+    verbs: [get, list, delete]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: node-pruner
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: node-pruner
+subjects:
+  - kind: ServiceAccount
+    name: node-pruner
+    namespace: kube-system
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: node-pruner
+  namespace: kube-system
+spec:
+  schedule: "*/2 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      activeDeadlineSeconds: 90
+      template:
+        spec:
+          serviceAccountName: node-pruner
+          restartPolicy: Never
+          nodeSelector:
+            node-role.kubernetes.io/control-plane: "true"
+          containers:
+            - name: prune
+              # alpine/k8s trae kubectl, aws-cli y jq; el rol de la instancia da los permisos de AWS (IMDSv2, hop limit 2).
+              image: alpine/k8s:1.31.4
+              env:
+                - name: AWS_REGION
+                  value: __REGION__
+                - name: ASG_NAME
+                  value: __CLUSTER_NAME__-k3s-agents
+              command: [bash, -c]
+              args:
+                - |
+                  set -euo pipefail
+                  group=$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" --output json)
+                  # Sin el grupo en la respuesta no se sabe que instancias viven: no se borra nada.
+                  [ "$(jq '.AutoScalingGroups | length' <<<"$group")" = "1" ] || { echo "ASG $ASG_NAME no encontrado: no se borra nada"; exit 1; }
+                  live=$(jq -r '.AutoScalingGroups[0].Instances[] | select(.LifecycleState != "Terminating" and .LifecycleState != "Terminated") | .InstanceId' <<<"$group" | tr -d '\r')
+                  kubectl get nodes -o json | jq -r '
+                    .items[]
+                    | select(.metadata.name | startswith("k3s-agent-"))
+                    | select(([.status.conditions[] | select(.type == "Ready")][0].status // "Unknown") != "True")
+                    | .metadata.name' | tr -d '\r' | while read -r node; do
+                      [ -n "$node" ] || continue
+                      id="${node#k3s-agent-}"
+                      if grep -qxF "$id" <<<"$live"; then
+                        echo "$node: NotReady pero su instancia sigue en el ASG (arrancando o reiniciando); se deja"
+                      else
+                        echo "$node: instancia fuera del ASG; se borra el nodo"
+                        kubectl delete node "$node" --ignore-not-found
+                      fi
+                    done
+              resources:
+                requests: { cpu: 20m, memory: 64Mi }
+                limits: { cpu: 200m, memory: 192Mi }

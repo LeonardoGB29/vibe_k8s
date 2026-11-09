@@ -35,13 +35,24 @@ variable "agent_instance_type" {
 }
 
 variable "agent_count" {
-  description = "Agentes k3s (staging). Cada uno son 2 vCPU; con el servidor suman 2 x (agent_count + 1)."
+  description = "Agentes k3s minimos (staging). El Cluster Autoscaler añade agentes hasta agent_max cuando faltan recursos. Cada uno son 2 vCPU."
   type        = number
   default     = 2
 
   validation {
     condition     = var.agent_count >= 0 && var.agent_count <= 6
     error_message = "agent_count debe estar entre 0 y 6 (0 = un solo nodo: el servidor ejecuta también los pods)."
+  }
+}
+
+variable "agent_max" {
+  description = "Maximo de agentes que puede crear el autoescalado (staging). Con la cuota actual de 8 vCPU: servidor + 3 agentes (8 vCPU, con desarrollo apagado). Al aprobarse la cuota de 20 vCPU se puede subir hasta 6 (servidor + 6 agentes = 7 instancias)."
+  type        = number
+  default     = 3
+
+  validation {
+    condition     = var.agent_max >= 1 && var.agent_max <= 6
+    error_message = "agent_max debe estar entre 1 y 6 (servidor + 6 agentes = 7 instancias como maximo)."
   }
 }
 

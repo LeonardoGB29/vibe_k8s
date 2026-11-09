@@ -28,7 +28,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "=== [1/6] Esperando que los nodos del cluster estén Ready ==="
 DEADLINE=$((SECONDS + 600))
-until kubectl get nodes -o json 2>/dev/null | jq -e '[.items[] | select(.status.conditions[] | .type == "Ready" and .status == "True")] | length == '"$VIBE_EXPECTED_NODES" >/dev/null; do
+until kubectl get nodes -o json 2>/dev/null | jq -e '[.items[] | select(.status.conditions[] | .type == "Ready" and .status == "True")] | length >= '"$VIBE_EXPECTED_NODES" >/dev/null; do
     if (( SECONDS >= DEADLINE )); then
         echo "No llegaron a estar Ready los $VIBE_EXPECTED_NODES nodos en 10 minutos" >&2
         exit 1
@@ -58,6 +58,21 @@ kubectl wait --for=condition=Established crd/scaledobjects.keda.sh --timeout=180
 kubectl -n keda rollout status deployment/keda-operator --timeout=180s
 kubectl -n keda rollout status deployment/keda-metrics-apiserver --timeout=180s
 kubectl -n keda rollout status deployment/keda-admission --timeout=180s
+
+# Autoescalado de nodos: solo si el entorno tiene un Auto Scaling Group de agentes (staging).
+# El rol de los nodos solo puede describir ASG cuando Terraform habilito cluster_autoscaler.
+ASG_NAME="vibe-${VIBE_ENVIRONMENT}-k3s-agents"
+if [ "$(aws autoscaling describe-auto-scaling-groups --auto-scaling-group-names "$ASG_NAME" \
+        --query 'length(AutoScalingGroups)' --output text 2>/dev/null || echo 0)" = "1" ]; then
+    echo "=== [3b/6] Instalando Cluster Autoscaler (ASG $ASG_NAME) ==="
+    sed -e "s/__CLUSTER_NAME__/vibe-${VIBE_ENVIRONMENT}/g" -e "s/__REGION__/${AWS_DEFAULT_REGION}/g" \
+        "$SCRIPT_DIR/cluster-autoscaler.yaml" | kubectl apply -f -
+    kubectl -n kube-system rollout status deployment/cluster-autoscaler --timeout=180s
+    # Limpieza de nodos huerfanos (agentes que Terraform destruyo): una pasada ya y despues cada 2 minutos.
+    kubectl -n kube-system create job "node-pruner-init-$(date +%s)" --from=cronjob/node-pruner || true
+else
+    echo "Sin Auto Scaling Group de agentes en $VIBE_ENVIRONMENT: no se instala el Cluster Autoscaler."
+fi
 
 echo "=== [4/6] Imágenes: se usarán las publicadas en GHCR (${IMAGE_TAG}) ==="
 # No se construye nada en el servidor: las imágenes las construye y publica el CI, y

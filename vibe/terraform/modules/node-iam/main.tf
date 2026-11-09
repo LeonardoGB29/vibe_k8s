@@ -33,6 +33,12 @@ variable "extra_parameters" {
   default     = []
 }
 
+variable "cluster_autoscaler" {
+  description = "true = los nodos pueden ejecutar el Cluster Autoscaler (cambiar la capacidad de los ASG etiquetados para el)"
+  type        = bool
+  default     = false
+}
+
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
 
@@ -71,6 +77,49 @@ data "aws_iam_policy_document" "node" {
       for p in concat([var.token_parameter], var.extra_parameters) :
       "arn:aws:ssm:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:parameter${p}"
     ]
+  }
+
+  # Cluster Autoscaler: lectura de ASG/plantillas y cambio de capacidad solo en los ASG
+  # que llevan la etiqueta k8s.io/cluster-autoscaler/enabled.
+  dynamic "statement" {
+    for_each = var.cluster_autoscaler ? [1] : []
+    content {
+      sid = "ClusterAutoscalerRead"
+      actions = [
+        "autoscaling:DescribeAutoScalingGroups",
+        "autoscaling:DescribeAutoScalingInstances",
+        "autoscaling:DescribeLaunchConfigurations",
+        "autoscaling:DescribeScalingActivities",
+        "autoscaling:DescribeTags",
+        "ec2:DescribeImages",
+        "ec2:DescribeInstanceTypes",
+        "ec2:DescribeLaunchTemplateVersions",
+        "ec2:GetInstanceTypesFromInstanceRequirements",
+      ]
+      resources = ["*"]
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.cluster_autoscaler ? [1] : []
+    content {
+      sid = "ClusterAutoscalerScale"
+      actions = [
+        "autoscaling:SetDesiredCapacity",
+        "autoscaling:TerminateInstanceInAutoScalingGroup",
+      ]
+      resources = ["*"]
+      condition {
+        test     = "StringEquals"
+        variable = "aws:ResourceTag/k8s.io/cluster-autoscaler/enabled"
+        values   = ["true"]
+      }
+      condition {
+        test     = "StringEquals"
+        variable = "aws:ResourceTag/k8s.io/cluster-autoscaler/${var.name_prefix}"
+        values   = ["owned"]
+      }
+    }
   }
 
   statement {

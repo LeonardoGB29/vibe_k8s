@@ -25,6 +25,8 @@ module "node_iam" {
   token_parameter = "/${local.name}/k3s-token"
   # La crea aws/deploy-aws.sh con la URL del RDS de este entorno.
   extra_parameters = ["/${local.name}/database-url"]
+  # Permisos del Cluster Autoscaler (escalado automatico de agentes).
+  cluster_autoscaler = true
 }
 
 module "cluster" {
@@ -39,6 +41,8 @@ module "cluster" {
   server_instance_type    = var.server_instance_type
   agent_instance_type     = var.agent_instance_type
   agent_count             = var.agent_count
+  autoscaling_enabled     = true
+  agent_max               = var.agent_max
   instance_profile        = module.node_iam.instance_profile_name
   key_name                = var.key_name
   ami_id                  = var.ami_id
@@ -52,6 +56,9 @@ module "monitoring" {
   elb_name     = module.cluster.elb_name
   instance_ids = module.cluster.instance_ids
   alert_email  = var.alert_email
+  # Los agentes los crea el Auto Scaling Group: se vigilan como grupo, no instancia a instancia.
+  asg_name     = module.cluster.agent_asg_name != null ? module.cluster.agent_asg_name : ""
+  asg_min_size = var.agent_count
 }
 
 # RDS: solo acepta conexiones desde los nodos de ESTE entorno.

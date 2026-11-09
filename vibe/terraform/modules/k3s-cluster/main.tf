@@ -66,6 +66,23 @@ variable "agent_count" {
   default = 3
 }
 
+variable "autoscaling_enabled" {
+  description = "true = los agentes viven en un Auto Scaling Group que el Cluster Autoscaler escala (agent_count pasa a ser el minimo)."
+  type        = bool
+  default     = false
+}
+
+variable "agent_max" {
+  description = "Maximo de agentes del Auto Scaling Group (solo con autoscaling_enabled). Limitado por la cuota de vCPU de EC2."
+  type        = number
+  default     = 6
+
+  validation {
+    condition     = var.agent_max >= 1 && var.agent_max <= 20
+    error_message = "agent_max debe estar entre 1 y 20."
+  }
+}
+
 variable "instance_profile" {
   description = "Perfil de instancia EC2 de los nodos (lo crea modules/node-iam)"
   type        = string
@@ -96,7 +113,8 @@ data "aws_ssm_parameter" "ami" {
 locals {
   ami_id          = var.ami_id != "" ? var.ami_id : data.aws_ssm_parameter.ami[0].value
   token_parameter = "/${var.name_prefix}/k3s-token"
-  agents          = { for i in range(var.agent_count) : "k3s-agent-${i + 1}" => i }
+  # Con autoscaling no hay instancias fijas: las crea el Auto Scaling Group.
+  agents = var.autoscaling_enabled ? {} : { for i in range(var.agent_count) : "k3s-agent-${i + 1}" => i }
 }
 
 # Token compartido: generado por Terraform y guardado cifrado, nunca en el repositorio.
@@ -199,6 +217,117 @@ resource "aws_instance" "agent" {
   depends_on = [aws_ssm_parameter.k3s_token]
 }
 
+# Agentes con autoescalado: plantilla de lanzamiento + Auto Scaling Group. El Cluster Autoscaler
+# (dentro del clúster) descubre el grupo por las etiquetas k8s.io/cluster-autoscaler/* y cambia
+# su capacidad deseada entre agent_count (minimo) y agent_max cuando hay pods sin sitio (Pending)
+# o nodos sobrantes.
+resource "aws_launch_template" "agent" {
+  count = var.autoscaling_enabled ? 1 : 0
+
+  name_prefix   = "${var.name_prefix}-k3s-agent-"
+  image_id      = local.ami_id
+  instance_type = var.agent_instance_type
+  key_name      = var.key_name
+
+  iam_instance_profile {
+    name = var.instance_profile
+  }
+
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups             = [var.nodes_security_group_id]
+  }
+
+  user_data = base64encode(templatefile("${path.module}/files/agent-asg.sh.tftpl", {
+    region          = var.region
+    k3s_version     = var.k3s_version
+    token_parameter = local.token_parameter
+    server_ip       = aws_instance.server.private_ip
+  }))
+
+  metadata_options {
+    http_endpoint = "enabled"
+    http_tokens   = "required"
+    # 2 saltos: los pods pueden leer las credenciales del rol de la instancia (IMDSv2).
+    http_put_response_hop_limit = 2
+  }
+
+  block_device_mappings {
+    device_name = "/dev/xvda"
+    ebs {
+      volume_size = 15
+      volume_type = "gp2"
+      encrypted   = true
+    }
+  }
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "${var.name_prefix}-k3s-agent"
+      Role = "k3s-agent"
+    }
+  }
+
+  depends_on = [aws_ssm_parameter.k3s_token]
+}
+
+resource "aws_autoscaling_group" "agent" {
+  count = var.autoscaling_enabled ? 1 : 0
+
+  name                = "${var.name_prefix}-k3s-agents"
+  min_size            = var.agent_count
+  max_size            = var.agent_max
+  desired_capacity    = var.agent_count
+  vpc_zone_identifier = var.subnet_ids
+  load_balancers      = [aws_elb.this.name]
+  health_check_type   = "EC2"
+  # El Cluster Autoscaler decide cuándo escalar; AZRebalance movería nodos por su cuenta.
+  suspended_processes = ["AZRebalance"]
+
+  # Metricas del grupo (AWS/AutoScaling) para el panel y las alarmas de modules/monitoring.
+  metrics_granularity = "1Minute"
+  enabled_metrics = [
+    "GroupMinSize",
+    "GroupMaxSize",
+    "GroupDesiredCapacity",
+    "GroupInServiceInstances",
+    "GroupPendingInstances",
+    "GroupTotalInstances",
+  ]
+
+  launch_template {
+    id      = aws_launch_template.agent[0].id
+    version = "$Latest"
+  }
+
+  tag {
+    key                 = "Name"
+    value               = "${var.name_prefix}-k3s-agent"
+    propagate_at_launch = true
+  }
+  tag {
+    key                 = "Role"
+    value               = "k3s-agent"
+    propagate_at_launch = true
+  }
+  tag {
+    key                 = "k8s.io/cluster-autoscaler/enabled"
+    value               = "true"
+    propagate_at_launch = false
+  }
+  tag {
+    key                 = "k8s.io/cluster-autoscaler/${var.name_prefix}"
+    value               = "owned"
+    propagate_at_launch = false
+  }
+
+  lifecycle {
+    # La capacidad deseada la maneja el Cluster Autoscaler: un apply no debe deshacerla.
+    ignore_changes = [desired_capacity]
+  }
+}
+
 # Classic ELB (como el stack original): reparte el puerto 80 hacia Traefik en los agentes.
 # Excepción temporal AWS-0053: endpoint HTTP público requerido por la demo;
 # el grupo del ELB solo acepta puerto 80 y los nodos no admiten entrada pública.
@@ -212,7 +341,9 @@ resource "aws_elb" "this" {
   # El servidor tambien ejecuta pods (k3s no lo marca como no programable) y el NodePort de
   # Traefik responde en cualquier nodo: asi un clúster de un solo nodo (agent_count = 0) tiene
   # trafico y al añadir agentes se reparte entre todos.
-  instances = concat([aws_instance.server.id], [for a in aws_instance.agent : a.id])
+  # Con autoscaling los agentes los registra el Auto Scaling Group (load_balancers) y el servidor
+  # se adjunta con aws_elb_attachment; listar instancias aqui las desregistraria en cada apply.
+  instances = var.autoscaling_enabled ? null : concat([aws_instance.server.id], [for a in aws_instance.agent : a.id])
 
   cross_zone_load_balancing = true
   idle_timeout              = 120
@@ -231,6 +362,21 @@ resource "aws_elb" "this" {
     interval            = 10
     timeout             = 5
   }
+}
+
+resource "aws_elb_attachment" "server" {
+  count = var.autoscaling_enabled ? 1 : 0
+
+  elb      = aws_elb.this.id
+  instance = aws_instance.server.id
+}
+
+output "autoscaling_enabled" {
+  value = var.autoscaling_enabled
+}
+
+output "agent_asg_name" {
+  value = var.autoscaling_enabled ? aws_autoscaling_group.agent[0].name : null
 }
 
 output "elb_url" {

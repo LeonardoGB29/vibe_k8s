@@ -19,6 +19,10 @@ locals {
       ["AWS/EC2", "StatusCheckFailed", "InstanceId", instance_id, { stat = "Maximum", yAxis = "right" }]
     ]
   ]
+
+  has_asg = var.asg_name != ""
+  # Los widgets del ASG van debajo de los de las instancias fijas (2 por fila, 6 de alto).
+  asg_widgets_y = 6 + ceil(length(var.instance_ids) / 2) * 6
 }
 
 resource "aws_sns_topic" "alerts" {
@@ -71,6 +75,46 @@ resource "aws_cloudwatch_metric_alarm" "instance_cpu" {
   tags                = { Name = "${var.name_prefix}-${each.key}-cpu-high" }
 }
 
+# Agentes con autoescalado: las instancias nacen y mueren, asi que no hay alarma por instancia.
+# Se vigila el grupo: CPU media de todos los agentes y que no queden menos en servicio que el minimo.
+resource "aws_cloudwatch_metric_alarm" "asg_cpu_high" {
+  count = local.has_asg ? 1 : 0
+
+  alarm_name          = "${var.name_prefix}-agents-cpu-high"
+  alarm_description   = "El uso medio de CPU de los agentes (Auto Scaling Group) supero 85% en tres periodos consecutivos de cinco minutos."
+  namespace           = "AWS/EC2"
+  metric_name         = "CPUUtilization"
+  dimensions          = { AutoScalingGroupName = var.asg_name }
+  statistic           = "Average"
+  period              = 300
+  evaluation_periods  = 3
+  datapoints_to_alarm = 3
+  threshold           = 85
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.alarm_actions
+  tags                = { Name = "${var.name_prefix}-agents-cpu-high" }
+}
+
+resource "aws_cloudwatch_metric_alarm" "asg_in_service_low" {
+  count = local.has_asg && var.asg_min_size > 0 ? 1 : 0
+
+  alarm_name          = "${var.name_prefix}-agents-in-service-low"
+  alarm_description   = "Hay menos agentes en servicio que el minimo del Auto Scaling Group durante cinco minutos seguidos."
+  namespace           = "AWS/AutoScaling"
+  metric_name         = "GroupInServiceInstances"
+  dimensions          = { AutoScalingGroupName = var.asg_name }
+  statistic           = "Minimum"
+  period              = 60
+  evaluation_periods  = 5
+  datapoints_to_alarm = 5
+  threshold           = var.asg_min_size
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = local.alarm_actions
+  tags                = { Name = "${var.name_prefix}-agents-in-service-low" }
+}
+
 resource "aws_cloudwatch_metric_alarm" "elb_unhealthy_hosts" {
   alarm_name          = "${var.name_prefix}-elb-unhealthy-hosts"
   alarm_description   = "El Classic Load Balancer reporto al menos un agente no saludable."
@@ -98,7 +142,7 @@ resource "aws_cloudwatch_metric_alarm" "elb_healthy_hosts_low" {
   period              = 60
   evaluation_periods  = 2
   datapoints_to_alarm = 1
-  threshold           = min(2, length(var.instance_ids))
+  threshold           = min(2, length(var.instance_ids) + var.asg_min_size)
   comparison_operator = "LessThanThreshold"
   treat_missing_data  = "notBreaching"
   alarm_actions       = local.alarm_actions
@@ -179,7 +223,48 @@ resource "aws_cloudwatch_dashboard" "vibe" {
             metrics = instance_metrics
           }
         }
-      ]
+      ],
+      local.has_asg ? [
+        {
+          type   = "metric"
+          x      = 0
+          y      = local.asg_widgets_y
+          width  = 12
+          height = 6
+          properties = {
+            title   = "Agentes (Auto Scaling Group): nodos en servicio y capacidad"
+            region  = var.region
+            period  = 60
+            view    = "timeSeries"
+            stacked = false
+            metrics = [
+              ["AWS/AutoScaling", "GroupInServiceInstances", "AutoScalingGroupName", var.asg_name, { stat = "Average" }],
+              ["AWS/AutoScaling", "GroupDesiredCapacity", "AutoScalingGroupName", var.asg_name, { stat = "Average" }],
+              ["AWS/AutoScaling", "GroupPendingInstances", "AutoScalingGroupName", var.asg_name, { stat = "Average" }],
+              ["AWS/AutoScaling", "GroupMinSize", "AutoScalingGroupName", var.asg_name, { stat = "Average" }],
+              ["AWS/AutoScaling", "GroupMaxSize", "AutoScalingGroupName", var.asg_name, { stat = "Average" }]
+            ]
+          }
+        },
+        {
+          type   = "metric"
+          x      = 12
+          y      = local.asg_widgets_y
+          width  = 12
+          height = 6
+          properties = {
+            title   = "Agentes (Auto Scaling Group): CPU media y maxima"
+            region  = var.region
+            period  = 60
+            view    = "timeSeries"
+            stacked = false
+            metrics = [
+              ["AWS/EC2", "CPUUtilization", "AutoScalingGroupName", var.asg_name, { stat = "Average" }],
+              ["AWS/EC2", "CPUUtilization", "AutoScalingGroupName", var.asg_name, { stat = "Maximum" }]
+            ]
+          }
+        }
+      ] : []
     )
   })
 }
