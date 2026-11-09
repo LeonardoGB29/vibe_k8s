@@ -119,5 +119,5 @@ results/     resultados de las pruebas de carga (k6)
 ```
 
 La integración y el despliegue continuos están en `.github/workflows/` (raíz del repositorio):
-`ci.yml` (pruebas, escaneos y publicación de imágenes), `deploy.yml` (despliegue por entorno),
+`ci-cd.yml` (CI: pruebas, escaneos y publicación de imágenes; CD: despliegue de cada rama en su entorno), `deploy.yml` (despliegue reutilizable y manual),
 `terraform.yml` y `terraform-drift.yml` (requieren OIDC; no se usan en la cuenta actual).

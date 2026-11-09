@@ -20,7 +20,7 @@ on:
           - desarrollo
           - staging
           - produccion
-  # Lo invoca ci.yml (CD automatico) con el SHA que acaba de pasar el CI en la rama del entorno.
+  # Lo invoca ci-cd.yml (CD automatico) con el SHA que acaba de pasar el CI en la rama del entorno.
   workflow_call:
     inputs:
       commit_sha:
@@ -52,7 +52,7 @@ jobs:
     env:
       COMMIT_SHA: ${{ inputs.commit_sha }}
       TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
-      # El tag que publica ci.yml (docker/metadata-action type=sha,format=long)
+      # El tag que publica ci-cd.yml (docker/metadata-action type=sha,format=long)
       # lleva el prefijo "sha-"; el commit de Git no.
       IMAGE_TAG: sha-${{ inputs.commit_sha }}
       AWS_REGION: ${{ vars.AWS_REGION || 'us-east-2' }}

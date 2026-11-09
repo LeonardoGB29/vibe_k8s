@@ -3,7 +3,7 @@
 ## Para revisar
 
 - [x] Volver a ejecutar CI en `main`: todos los jobs requeridos quedaron verdes en el commit `735b619`.
-- [x] Actualizado `.github/workflows/ci.yml`: `test-kind` usa el overlay `ci` y Trivy escanea Terraform activo. Renderizado localmente y CI verde en GitHub para `main` (`735b619`).
+- [x] Actualizado `.github/workflows/ci-cd.yml`: `test-kind` usa el overlay `ci` y Trivy escanea Terraform activo. Renderizado localmente y CI verde en GitHub para `main` (`735b619`).
 - [x] `test-kind`: overlay `ci` con una réplica por microservicio, usado por el workflow para reducir consumo del runner.
 - [x] `kubectl kustomize k8s/overlays/test` y `.../desarrollo` renderizan localmente; `desarrollo` usa el perfil básico (worker hasta 2 réplicas, APIs 1 réplica).
 - [x] Reinicios graduales de `catalog-api`, `upload-api` y `stream-api` completados en AWS; cada deployment volvió a 2/2 y `/`, `/api/stats` y `/api/tracks` respondieron HTTP 200.
