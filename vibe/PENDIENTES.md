@@ -68,7 +68,7 @@ Estado de ejecución: el PR #1 ya está integrado en `main`. Las marcas anterior
 - [ ] Activar `AUTO_DEPLOY` tras el primer despliegue manual correcto de desarrollo (ver también la tarea de Leonardo más abajo).
 - [ ] Desplegar desarrollo (`aws/deploy-aws.sh`) y verificar el guardián con `guard_dry_run` antes de dejarlo activo.
 - [x] Los Ingress ya no compiten por la ruta `/`: cada entorno tiene su propio clúster, Traefik y ELB.
-- [ ] Las apps reciben credenciales temporales del rol copiadas a un Secret (`cluster-init.sh`) que caducan: sustituir por lectura directa del rol o rotación.
+- [x] Acceso a S3 con el rol de la EC2 (`MINIO_AUTH=instance-role`, IMDSv2 con hop limit 2): ya no se copian credenciales a un Secret y nada caduca. Falta aplicarlo en los nodos existentes y reiniciar los pods de desarrollo y staging.
 - [x] Un clúster k3s por entorno (desarrollo 1+1 nodos, staging 1+2, producción 1+3), cada uno con su ELB, buckets, rol de nodos y monitoreo; RDS por entorno con `DATABASE_URL` en SSM; `deploy-aws.sh`/`destroy-aws.sh` y `make aws-up|aws-down ENV=...` reciben el entorno; los scripts de distribución de imágenes se adaptan al número real de agentes.
 - [x] CI ejecutado en GitHub: todos los jobs pasan en `f97f865` (Terraform en 5 directorios, Trivy con la excepción AWS-0095, despliegue de prueba en kind) y `image-publish` subió las imágenes `sha-<SHA>` a GHCR.
 - [x] `aws/init-account.sh` ejecutado: bucket del state, guardián de créditos (invocado a mano: saldo leído 120 USD, acción `none`) y usuario `github-vibe-deploy`; clave generada y GitHub Environments creados.

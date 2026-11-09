@@ -21,16 +21,24 @@ Staging y producción no incluyen el StatefulSet de PostgreSQL: los servicios le
 No están en Git. Los crea `aws/cluster-init.sh` en el clúster del entorno cuando se
 ejecuta `bash aws/deploy-aws.sh <entorno>`:
 
-- `vibe-config`: región, buckets S3 del entorno, cola y bitrates.
+- `vibe-config`: región, buckets S3 del entorno, cola, bitrates y `MINIO_AUTH=instance-role`.
 - `vibe-secrets`: en desarrollo, una contraseña de PostgreSQL generada al azar; en
   staging y producción, la `DATABASE_URL` del RDS, que `deploy-aws.sh` guarda antes como
   SecureString en SSM (`/vibe-<entorno>/database-url`) y que solo puede leer el rol de
-  los nodos de ese entorno. También lleva las credenciales temporales del rol de los
-  nodos para S3.
+  los nodos de ese entorno.
+
+**Acceso a S3 sin claves en Secrets.** Con `MINIO_AUTH=instance-role` los servicios crean
+su cliente S3 con el proveedor de credenciales del rol de la EC2 (IMDSv2): son
+credenciales **temporales que el propio cliente renueva** antes de que caduquen, así que
+no hay claves ni tokens copiados a ningún Secret, nada caduca ni se puede filtrar desde el
+repositorio. Para que los pods lleguen al servicio de metadatos, los nodos tienen
+`http_put_response_hop_limit = 2` (Terraform, módulo `k3s-cluster`). Compromiso: todos los
+pods del clúster comparten la identidad del nodo, por eso el rol (`modules/node-iam`) solo
+permite leer y escribir los dos buckets del entorno. En local (kind) se siguen usando las
+claves estáticas de MinIO (`MINIO_AUTH` por defecto es `static`).
 
 **Pendiente:** la `DATABASE_URL` usa el usuario administrador de RDS (falta un rol
-PostgreSQL restringido para la aplicación) y las credenciales S3 temporales caducan en
-unas horas (falta leerlas directamente del rol o rotarlas).
+PostgreSQL restringido para la aplicación).
 
 ## Renderizar o desplegar
 
