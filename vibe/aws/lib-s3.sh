@@ -73,7 +73,7 @@ ghcr_all_images_exist() {  # <owner> <repo> <tag>
 # existen en GHCR (el CI las publica en cada push a main/develop). Requiere REPO_ROOT.
 resolve_image_tag() {
   local url sha
-  url="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
+  url="$(unset MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL; git -C "$REPO_ROOT" remote get-url origin 2>/dev/null || true)"
   REGISTRY_REPO="${REGISTRY_REPO:-$(basename "${url:-x}" .git)}"
   REGISTRY_OWNER="${REGISTRY_OWNER:-$(sed -E 's#.*github\.com[:/]([^/]+)/.*#\1#' <<< "$url" | tr '[:upper:]' '[:lower:]')}"
   [[ -n "$REGISTRY_OWNER" && -n "$REGISTRY_REPO" ]] || { echo "ERROR: no pude deducir owner/repo de 'git remote origin'. Define REGISTRY_OWNER y REGISTRY_REPO." >&2; return 1; }
@@ -84,14 +84,26 @@ resolve_image_tag() {
       || { echo "ERROR: faltan imagenes ${IMAGE_TAG} en ghcr.io/${REGISTRY_OWNER}/${REGISTRY_REPO}-*" >&2; return 1; }
     return 0
   fi
-  for sha in $(git -C "$REPO_ROOT" rev-list -n 40 HEAD); do
+  for sha in $(unset MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL; git -C "$REPO_ROOT" rev-list -n 40 HEAD); do
     if ghcr_all_images_exist "$REGISTRY_OWNER" "$REGISTRY_REPO" "sha-$sha"; then
       IMAGE_TAG="sha-$sha"
-      [[ "$sha" == "$(git -C "$REPO_ROOT" rev-parse HEAD)" ]] || \
+      [[ "$sha" == "$(unset MSYS_NO_PATHCONV MSYS2_ARG_CONV_EXCL; git -C "$REPO_ROOT" rev-parse HEAD)" ]] || \
         echo "AVISO: HEAD no tiene imagenes publicadas; se usan las del commit ${sha:0:7} (el mas reciente con CI completo)." >&2
       return 0
     fi
   done
   echo "ERROR: ninguno de los ultimos 40 commits tiene sus 5 imagenes en GHCR. Haz push y espera al job image-publish del CI, o indica VIBE_IMAGE_TAG=sha-<commit>." >&2
   return 1
+}
+
+# Git Bash en Windows convierte argumentos que empiezan por "/" (p. ej. /vibe-staging/database-url)
+# en rutas de Windows. Solo la CLI de AWS debe recibirlos tal cual: no se desactiva para git ni Terraform.
+aws() {
+  local args=() a
+  for a in "$@"; do
+    # Rutas locales (/tmp, /c/...) a formato Windows para que la CLI las encuentre.
+    case "$a" in /tmp/*|/c/*|/d/*) a="$(cygpath -w "$a")" ;; esac
+    args+=("$a")
+  done
+  MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL="*" command aws "${args[@]}"
 }

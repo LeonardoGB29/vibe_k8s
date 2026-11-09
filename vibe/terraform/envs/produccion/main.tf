@@ -69,5 +69,5 @@ module "postgres" {
   allocated_storage        = var.allocated_storage
   max_allocated_storage    = var.max_allocated_storage
   multi_az                 = true
-  backup_retention_days    = 3
+  backup_retention_days    = 1 # plan gratuito: el maximo permitido es 1 dia (con 3 falla FreeTierRestrictionError)
 }
