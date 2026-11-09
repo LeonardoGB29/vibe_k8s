@@ -35,9 +35,9 @@ variable "agent_instance_type" {
 }
 
 variable "agent_count" {
-  description = "Agentes k3s minimos (staging). El Cluster Autoscaler añade agentes hasta agent_max cuando faltan recursos. Cada uno son 2 vCPU."
+  description = "Agentes k3s minimos (staging). Por defecto 0: arranca con un solo nodo (el servidor) y el Cluster Autoscaler añade agentes hasta agent_max cuando HPA/KEDA piden pods que no caben, y los retira al quedar ociosos. Cada agente son 2 vCPU."
   type        = number
-  default     = 2
+  default     = 0
 
   validation {
     condition     = var.agent_count >= 0 && var.agent_count <= 6
