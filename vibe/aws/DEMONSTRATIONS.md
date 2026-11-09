@@ -36,6 +36,10 @@ requiere Docker, imágenes :dev y permisos de distribución mediante S3/SSM.
   la detección y posible evicción; restaura la EC2 y espera Ready. No promete que
   la recuperación sea inmediata ni que todas las peticiones tengan éxito.
 
+Nota: el ensayo de nodo (`demo.py node`) detiene `k3s-agent-3` y el de rolling distribuye una
+imagen a los agentes; ambos necesitan agentes, así que no aplican a desarrollo (1 solo nodo).
+Hazlos en staging o producción, o escala antes: `bash aws/scale-aws.sh staging 3`.
+
 Limitaciones: un solo servidor de control, PVC locales y Redis BLPOP sin
 confirmación/reentrega de trabajos interrumpidos. Eliminar un pod directamente
 no prueba protección mediante PDB. No detener nodos de almacenamiento ni el

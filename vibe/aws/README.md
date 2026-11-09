@@ -5,18 +5,20 @@ nodos y monitoreo, en la región asignada a la cuenta (`us-east-2`):
 
 | Entorno | Rol | Nodos (por defecto) | vCPU | Autoescalado (techo) | Base de datos | USD/día aprox. (24/7) |
 |---|---|---|---:|---|---|---:|
-| `desarrollo` | pruebas de código | 1 servidor `t3.medium` + 1 agente `t3.small` | 4 | APIs 1–2, worker hasta 2 | PostgreSQL en el clúster | 2,45 |
-| `staging` | pruebas de carga | 1 servidor + 2 agentes | 6 | APIs 2–5, worker hasta 5 | RDS Single-AZ | 3,63 |
-| `produccion` | referencia | 1 servidor + 3 agentes | 8 | APIs 2–8 (stream-api 2–10), worker hasta 8 | RDS Multi-AZ | 4,81 |
+| `desarrollo` | comprobar que compila y que no se rompe nada | **1 servidor `c7i-flex.large`, sin agentes** | 2 | APIs 1–2, worker hasta 2 | PostgreSQL en el clúster | 2,82 |
+| `staging` | pruebas de carga | 1 servidor + 2 agentes `t3.small` (se escala a demanda) | 6 | APIs 2–5, worker hasta 5 | RDS Single-AZ | 4,67 |
+| `produccion` | referencia | 1 servidor + 3 agentes | 8 | APIs 2–8 (stream-api 2–10), worker hasta 8 | RDS Multi-AZ | 5,85 |
 
-Los discos EBS gp2 son de 20 GB (servidor) y 15 GB (cada agente). Los nodos se
-administran con SSM Session Manager: no hay SSH ni claves `.pem`. El detalle de
-Terraform, el pipeline CI/CD y las variables de GitHub están en
+El cómputo se ajusta al rol de cada entorno cambiando el **número de agentes**
+(`bash aws/scale-aws.sh <entorno> <n>`, ver «Escalar»): cada agente cuesta ≈0,67 USD/día, y
+el servidor, que es lo caro, no cambia. Los discos EBS gp2 son de 20 GB (servidor) y 15 GB
+(cada agente). Los nodos se administran con SSM Session Manager: no hay SSH ni claves
+`.pem`. El detalle de Terraform, el pipeline CI/CD y las variables de GitHub están en
 [terraform/README.md](../terraform/README.md).
 
 **Costo:** con las EC2 apagadas un entorno cuesta ~0,85 USD/día (ELB, discos y alarmas
 siguen cobrando). Levanta staging y producción solo cuando los necesites y comprueba la
-cuota de vCPU de EC2 (los tres juntos suman 18). El guardián de créditos
+cuota de vCPU de EC2 (los tres juntos suman 16). El guardián de créditos
 (`terraform/account`) pausa EC2 y RDS con la etiqueta `Project=vibe` cuando los créditos
 bajan del umbral.
 
@@ -39,22 +41,35 @@ también `deploy-aws.sh` necesitas `jq`.
 bash aws/deploy-aws.sh [desarrollo|staging|produccion]    # o: make aws-up ENV=staging
 ```
 
-Solicita escribir `desplegar`. Crea/configura los tres buckets del entorno con AWS CLI,
-aplica Terraform (EC2 del clúster, ELB, IAM de los nodos, CloudWatch y, en staging y
-producción, RDS), guarda la `DATABASE_URL` del RDS en SSM, empaqueta la aplicación, la
-instala en el servidor por SSM (`cluster-init.sh`, con el overlay del entorno), comprueba
-`/`, `/api/stats` y `/api/tracks` y muestra la URL pública. Antes de empezar revisa el
-espacio libre local, en el servidor y en cada agente. El número de agentes lo marca
-`agent_count` de Terraform (el script se adapta al número real).
+Antes de pedir confirmación busca en GHCR las imágenes publicadas por el CI (las del commit
+más reciente de tu historial que tenga las 5; se puede forzar con `VIBE_IMAGE_TAG=sha-<commit>`)
+y las muestra. Solicita escribir `desplegar`. Crea/configura los tres buckets del entorno
+con AWS CLI, aplica Terraform (EC2 del clúster, ELB, IAM de los nodos, CloudWatch y, en
+staging y producción, RDS), guarda la `DATABASE_URL` del RDS en SSM, empaqueta la
+aplicación, la instala en el servidor por SSM (`cluster-init.sh`, con el overlay del
+entorno), comprueba `/`, `/api/stats` y `/api/tracks` y muestra la URL pública. El número
+de agentes lo marca `agent_count` de Terraform (0 en desarrollo; el script se adapta).
 
 Si Terraform no está instalado, el script descarga la versión `TERRAFORM_VERSION`
 (1.16.6 por defecto) desde HashiCorp, verifica su SHA-256 y la instala en
 `~/.local/bin` (Linux x86_64/ARM64, requiere `python3`).
 
-`cluster-init.sh` instala Traefik (chart 41.6.0, NodePort 30080) y KEDA (la
-versión está en `k8s/KEDA_VERSION`), construye las imágenes en el servidor y las
-distribuye a los agentes con S3 y SSM Run Command (`build-and-load.sh`,
-`distribute-ssm.sh`).
+`cluster-init.sh` instala Traefik (chart 41.6.0, NodePort 30080) y KEDA (la versión está en
+`k8s/KEDA_VERSION`) y despliega la aplicación con `deploy-ghcr.sh`, el mismo script del CD:
+**no construye imágenes en el servidor**, las descarga de GHCR (paquetes públicos). Así
+cualquier nodo que se añada después puede ejecutarlas y el servidor no necesita memoria
+extra para compilar. `distribute-ssm.sh` solo lo usa la demo de rolling update.
+
+## Escalar
+
+```bash
+bash aws/scale-aws.sh staging 4        # o: make aws-scale ENV=staging AGENTS=4
+bash aws/scale-aws.sh staging 1        # al terminar: vacía los nodos que sobran y los elimina
+```
+
+Pide escribir `escalar`, aplica Terraform con el nuevo `agent_count`, espera a que los nodos
+estén `Ready` y muestra dónde quedaron los pods. Es la forma de dar a staging la capacidad
+de una prueba de carga sin pagar esa capacidad todo el tiempo.
 
 ## 3. Desplegar nuevas versiones
 

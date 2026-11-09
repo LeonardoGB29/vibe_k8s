@@ -76,6 +76,10 @@ Estado de ejecución: el PR #1 ya está integrado en `main`. Las marcas anterior
 - [ ] Hacer públicos los 5 paquetes de GHCR (`vibe_k8s-frontend`, `-catalog-api`, `-upload-api`, `-stream-api`, `-worker`) para que los nodos descarguen las imágenes sin credenciales.
 - [ ] Comprobar que los tres Environments tienen los secretos `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY` y la variable `AWS_REGION`; rotar la clave cada ~90 días.
 - [ ] Confirmar la cuota de vCPU de EC2 (`L-1216C47A`): el 08/11/2026 seguía en 8 (plan FREE, ajustable con una solicitud en Service Quotas) y los tres entornos juntos suman 18.
+- [x] Roles por entorno: desarrollo = 1 solo nodo (`agent_count = 0`, el servidor ejecuta los pods y está en el ELB); staging y producción con agentes; `aws/scale-aws.sh` / `make aws-scale` cambian el número de agentes (drain al reducir) y la alarma de hosts sanos se adapta al número de nodos.
+- [x] Despliegue desde GHCR en lugar de construir en el servidor: `deploy-aws.sh` resuelve la imagen publicada más reciente (`VIBE_IMAGE_TAG` para forzarla) y `cluster-init.sh` delega en `deploy-ghcr.sh`; así cualquier nodo nuevo descarga las imágenes. Se eliminó `build-and-load.sh`.
+- [ ] Primer despliegue real de desarrollo con 1 nodo: comprobar con `kubectl describe node` que el servidor (2 vCPU, 4 GB) tiene holgura con la aplicación (~0,8 vCPU y 0,9 GB pedidos), Traefik y KEDA.
+- [ ] Probar `aws/scale-aws.sh` (subir y bajar agentes) en un entorno real: comprobar que los pods se reparten y que el drain no deja la aplicación caída.
 
 ### Mejoras siguientes
 - [x] Añadido workflow manual `deploy.yml` para el despliegue por SSM. Falta validar permisos y ejecución real en AWS.

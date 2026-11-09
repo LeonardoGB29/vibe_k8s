@@ -8,7 +8,7 @@ modules/network/      VPC predeterminada, subredes, security groups (sin SSH ni 
 modules/storage/      nombres de buckets S3 raw y hls
 modules/k3s-cluster/  servidor k3s + agentes (for_each), token en SSM, Traefik, ELB
 modules/monitoring/   dashboard CloudWatch, alarmas EC2/ELB y SNS opcional
-envs/desarrollo/      entorno basico para pruebas de codigo (1 servidor + 1 agente)
+envs/desarrollo/      pruebas de codigo: 1 solo nodo (agent_count = 0), escalable con aws/scale-aws.sh
 envs/staging/         clúster k3s propio (1 servidor + 2 agentes, pruebas de carga) + RDS Single-AZ
 envs/produccion/      clúster k3s propio (1 servidor + 3 agentes) + RDS Multi-AZ
 ```
@@ -20,17 +20,46 @@ dashboard CloudWatch y (staging/producción) RDS. Lo único que se comparte es l
 VPC predeterminada de la cuenta: el aislamiento es por security group, no por
 VPC.
 
+Cada entorno tiene un **rol** y el cómputo que ese rol necesita. Los nodos son del mismo tipo
+en los tres (servidor `c7i-flex.large`, agentes `t3.small`), así que lo que cambia es el
+**número de agentes**: se añaden o se quitan sin tocar el resto (escalado horizontal).
+
 | Entorno | Rol | Nodos (por defecto) | vCPU | RDS | USD/día aprox. (24/7) |
 |---|---|---|---:|---|---:|
-| `desarrollo` | pruebas de código | 1 servidor `t3.medium` + 1 agente `t3.small` | 4 | no (PostgreSQL en el clúster) | 2,45 |
-| `staging` | pruebas de carga | 1 servidor + 2 agentes | 6 | Single-AZ `db.t3.micro` | 3,63 |
-| `produccion` | referencia | 1 servidor + 3 agentes | 8 | Multi-AZ `db.t3.micro` | 4,81 |
+| `desarrollo` | comprobar que compila y que no se rompe nada | **1 servidor, sin agentes** (el servidor también ejecuta los pods) | 2 | no (PostgreSQL en el clúster) | 2,82 |
+| `staging` | pruebas de carga antes de producción | 1 servidor + 2 agentes; **se escala a demanda** | 6 | Single-AZ `db.t3.micro` | 4,67 |
+| `produccion` | referencia | 1 servidor + 3 agentes | 8 | Multi-AZ `db.t3.micro` | 5,85 |
 
-Los tres a la vez suman 18 vCPU y ≈10,9 USD/día. **Comprueba la cuota de EC2 antes de
+Cada agente extra cuesta ≈0,67 USD/día (`t3.small` + IPv4 + disco), mucho menos que el
+servidor (≈2 USD/día), por eso el escalado se hace con agentes. Staging usa los mismos tipos
+de nodo que producción para que los resultados de carga sean comparables.
+
+Los tres a la vez suman 16 vCPU y ≈13,3 USD/día. **Comprueba la cuota de EC2 antes de
 desplegar** (`aws service-quotas get-service-quota --region us-east-2 --service-code ec2
---quota-code L-1216C47A`; el 08/11/2026 estaba en 8 vCPU en esta cuenta, ajustable con una solicitud en Service Quotas) y levanta staging o producción solo
-cuando los necesites. Se puede bajar el tamaño con `-var=agent_count=N`. El guardián de
-créditos (abajo) pausa lo que tenga la etiqueta `Project=vibe` si el saldo baja del umbral.
+--quota-code L-1216C47A`; el 08/11/2026 estaba en 8 vCPU en esta cuenta, ajustable con una
+solicitud en Service Quotas): con 8 caben, por ejemplo, desarrollo (2) + staging (6) o producción sola.
+Levanta staging o producción solo cuando los necesites. El guardián de créditos (abajo) pausa lo
+que tenga la etiqueta `Project=vibe` si el saldo baja del umbral.
+
+### Escalar horizontalmente
+
+```bash
+bash aws/scale-aws.sh staging 4          # o: make aws-scale ENV=staging AGENTS=4
+bash aws/scale-aws.sh staging 1          # al terminar la prueba: vacía (drain) y quita los agentes sobrantes
+```
+
+Los agentes se unen al servidor con el token de SSM, el ELB los incluye y Kubernetes reparte
+los pods; las imágenes se descargan de GHCR, por lo que cualquier nodo nuevo puede ejecutarlas.
+HPA (APIs) y KEDA (workers) aprovechan la capacidad nueva hasta el techo de cada overlay. El
+script guarda `agent_count` en `envs/<entorno>/agents.auto.tfvars` (ignorado por git) para que un
+`apply` local posterior no revierta el tamaño. Subir de 6 a 8 vCPU o más exige que la cuota de EC2 lo permita.
+
+**Tipos de instancia:** el plan gratuito de AWS solo permite tipos «Free Tier eligible»
+(en `us-east-2`: `c7i-flex.large`, `m7i-flex.large`, `t3.micro`/`t3.small`, `t4g.micro`/`t4g.small`,
+`t8i.micro`/`t8i.small`). Por eso el servidor es un `c7i-flex.large` (2 vCPU, 4 GB; ≈1,03 USD/día más
+que un `t3.medium`, que daría `InvalidParameterCombination`) y los agentes son `t3.small`. Si la cuenta
+pasa al plan de pago se puede volver a `t3.medium` con `-var=server_instance_type=t3.medium`. Lista
+actual: `aws ec2 describe-instance-types --region us-east-2 --filters Name=free-tier-eligible,Values=true`.
 
 ## Despliegue en AWS (región us-east-2)
 
@@ -42,7 +71,7 @@ export AWS_PROFILE=<tu perfil>            # sesión iniciada con `aws login`
 VIBE_ALERT_EMAIL=tu@correo bash aws/init-account.sh
 ```
 
-Después, un entorno (por defecto `desarrollo`, ≈2,45 USD/día encendido):
+Después, un entorno (por defecto `desarrollo`, ≈2,82 USD/día encendido):
 
 ```bash
 bash aws/deploy-aws.sh [desarrollo|staging|produccion]   # o: make aws-up ENV=staging
