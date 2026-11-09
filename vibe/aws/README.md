@@ -73,11 +73,13 @@ de una prueba de carga sin pagar esa capacidad todo el tiempo.
 
 ## 3. Desplegar nuevas versiones
 
-Con el pipeline: un push a `develop` que pasa el CI publica las imágenes y despliega
-solo en desarrollo (variable de repositorio `AUTO_DEPLOY=true`). Staging y producción se
-levantan a demanda (`make aws-up ENV=staging`) y se despliegan a mano con el workflow
-`deploy` y el SHA completo de un commit, con aprobadores en su Environment. Ver
-[terraform/README.md](../terraform/README.md#pipeline-cicd).
+Un cambio sube de entorno con PRs entre ramas: `feature/*` → `develop` (desarrollo) →
+`staging` (staging, donde se hacen las pruebas de carga a mano) → `main` (producción, con
+aprobación). Cada merge despliega en el entorno de su rama si el CI pasa (variable de
+repositorio `AUTO_DEPLOY=true`); staging y producción se levantan a demanda
+(`make aws-up ENV=staging`) y, si están apagados, el merge no falla: avisa y no despliega. También
+se puede lanzar a mano el workflow `deploy` con el SHA completo de un commit. Ver
+[terraform/README.md](../terraform/README.md#pipeline-cicd-un-cambio-sube-de-entorno-con-pr).
 
 Para repetir las pruebas medidas y guardar evidencia, ver
 [DEMONSTRATIONS.md](DEMONSTRATIONS.md). Los PVC locales no dan recuperación de

@@ -173,33 +173,55 @@ Memoria, logs de sistema y logs de pods no se envían aún a CloudWatch. Para es
 se requiere instalar CloudWatch Agent/Fluent Bit en los nodos; el rol de las EC2
 ya incluye `CloudWatchAgentServerPolicy`.
 
-## Pipeline CI/CD
+## Pipeline CI/CD: un cambio sube de entorno con PR
 
 ```
-PR / push ──► CI: pruebas, fmt/validate, TFLint, Checkov, Trivy, kubeconform, hadolint,
-              build de imagenes y despliegue de prueba en kind
-push develop ─► publica imagenes sha-<SHA> en GHCR ─► deploy AUTOMATICO a DESARROLLO
-push main ───► publica imagenes sha-<SHA> en GHCR (no despliega)
-manual: Actions > deploy > Run workflow (commit_sha + entorno) ─► STAGING / PRODUCCION
-cada despliegue: comprueba imagenes/servidor/SSM ─► aplica ─► salud ─► rollback si falla
-diario: terraform-drift.yml compara el codigo con la infraestructura real (requiere OIDC)
+feature/* ─PR─► develop ─PR─► staging ─PR─► main
+                   │             │            │
+                   ▼             ▼            ▼
+              DESARROLLO      STAGING      PRODUCCIÓN
+          (compila y no se   (pruebas de   (aprobación
+           rompe nada)        carga a mano) de una persona)
 ```
 
-- **Solo desarrollo se despliega solo.** Cada entorno tiene su propio clúster y los de
-  staging y producción solo se encienden a demanda (cuestan dinero y cuota de CPU), así
-  que se despliegan a mano con el mismo SHA que ya pasó el CI y está publicado en GHCR:
-  *Actions → deploy → Run workflow*. Antes hay que levantar el entorno con
-  `make aws-up ENV=staging` (o `produccion`) y destruirlo al terminar con `make aws-down ENV=...`.
-- **Activación del automático:** corre solo si la variable de *repositorio* `AUTO_DEPLOY`
-  vale `true` (ponla cuando el clúster de desarrollo exista y esté encendido; así un push no
-  falla mientras la infraestructura está apagada). `DRIFT_CHECK=true` activa la detección de deriva.
-- **Aprobación humana:** configura *Required reviewers* en los Environments `staging` y
-  `produccion`: el despliegue manual espera ahí la aprobación de una persona.
-- **Infraestructura:** `terraform.yml` sigue siendo manual (crear/destruir recursos cuesta
-  dinero); su `plan` se publica en el resumen del job para revisarlo.
+Cada PR ejecuta el CI (pruebas, validaciones, escaneos, build de las 5 imágenes y despliegue de
+prueba en kind). Al hacer merge, el CI corre en la rama de destino y, si pasa, publica las imágenes
+`sha-<SHA>` en GHCR y **despliega ese SHA en el entorno de la rama**:
+
+| Rama | Entorno | Qué se hace antes de promover |
+|---|---|---|
+| `develop` | desarrollo | comprobar que compila y que no se rompe nada (CI + comprobaciones de salud del despliegue) |
+| `staging` | staging | **pruebas de carga manuales** con el visor `k8s-web` (ver abajo) |
+| `main` | producción | aprobación de los *Required reviewers* del Environment `produccion` |
+
+- **Orden obligatorio:** el job `promotion-guard` falla si un PR hacia `staging` no viene de `develop` o si un PR
+  hacia `main` no viene de `staging`. Márcalo (junto con el CI) como check requerido en las rulesets.
+- **Cada despliegue** comprueba que las imágenes existen y que el servidor del entorno está encendido, aplica, comprueba
+  la salud y hace rollback automático si falla.
+- **Entornos a demanda:** staging y producción se levantan cuando hacen falta (`make aws-up ENV=staging`). Si el clúster
+  del entorno está apagado cuando llega el merge, el despliegue termina con un aviso (pestaña *Summary* del run) y no
+  pone el CI en rojo; el cambio queda en la rama y se despliega al levantar el entorno
+  (*Actions → deploy → Run workflow* con ese SHA).
+- **Activación:** el despliegue automático solo corre si la variable de *repositorio* `AUTO_DEPLOY` vale `true`.
+- **Se reconstruyen las imágenes en cada rama** (un merge crea un commit nuevo y por tanto un SHA nuevo); el código es el mismo
+  que ya pasó por el entorno anterior. Para desplegar exactamente las imágenes de otro SHA usa el workflow `deploy` a mano.
+- **Infraestructura:** `terraform.yml` sigue siendo manual (crear/destruir recursos cuesta dinero); su `plan` se publica en
+  el resumen del job.
 - Los paquetes de GHCR deben ser públicos para que los nodos descarguen las imágenes.
 - Un solo despliegue a la vez **por entorno** (`deploy-<entorno>`); los clústeres son independientes.
 
+### Pruebas de carga (solo staging, manuales y didácticas)
+
+El visor `k8s-web` incluye un *Centro de pruebas* que explica cada escenario y lo lanza con k6 contra el balanceador del
+entorno. En AWS solo se ofrece en **staging** (en desarrollo y producción muestra un aviso) y solo las pruebas de carga
+(carga sostenida, estrés, pico, usuarios fijos, rampa y worker/KEDA); las simulaciones de fallo siguen siendo del clúster
+local (kind). Requisitos en tu PC: `k6` (`winget install k6`), AWS CLI con el *Session Manager plugin*, `kubectl` y Python.
+
+```powershell
+.\"Conectar VIBE AWS.cmd" staging       # abre http://localhost:8085 con la pestaña «Pruebas»
+```
+
+Para ver el escalado mientras corre la prueba, sube agentes antes (`bash aws/scale-aws.sh staging 3`) y bájalos al terminar.
 ## GitHub Actions y credenciales
 
 El proyecto AWS prohíbe el proveedor OIDC de GitHub (SCP), así que `deploy.yml` se

@@ -64,8 +64,8 @@ Estado de ejecución: el PR #1 ya está integrado en `main`. Las marcas anterior
 - [x] Stack `terraform/account`: guardián de créditos (Lambda horaria que pausa EC2/RDS `Project=vibe` bajo el umbral) y usuario IAM de CI (el OIDC es opcional: las SCP de la cuenta lo prohíben). Con pruebas unitarias en CI; `terraform plan` leído contra la cuenta (15 recursos) sin errores.
 - [x] `deploy.yml`: entrada `commit_sha`, imagen `sha-<SHA>`, verificación de GHCR/servidor/SSM, comprobación de salud y rollback automático en `deploy-ghcr.sh`.
 - [x] `deploy.yml` se autentica con la clave del usuario IAM `github-vibe-deploy` (permisos mínimos); `terraform.yml` y la deriva requieren OIDC y no se usan: Terraform se ejecuta en local.
-- [x] Pipeline CD: `develop` despliega solo en desarrollo; staging y producción (clúster propio cada uno, a demanda) se despliegan a mano con `deploy.yml` y el mismo SHA. Variables de repositorio `AUTO_DEPLOY` y `DRIFT_CHECK`.
-- [ ] Poner *Required reviewers* en los Environments `staging` y `produccion`, y activar `AUTO_DEPLOY` tras el primer despliegue manual correcto de desarrollo.
+- [x] Pipeline CD: cada rama despliega en su entorno (ver «Flujo de promoción por PR»); `deploy.yml` también se lanza a mano con cualquier SHA. Variables de repositorio `AUTO_DEPLOY` y `DRIFT_CHECK`.
+- [ ] Activar `AUTO_DEPLOY` tras el primer despliegue manual correcto de desarrollo (ver también la tarea de Leonardo más abajo).
 - [ ] Desplegar desarrollo (`aws/deploy-aws.sh`) y verificar el guardián con `guard_dry_run` antes de dejarlo activo.
 - [x] Los Ingress ya no compiten por la ruta `/`: cada entorno tiene su propio clúster, Traefik y ELB.
 - [ ] Las apps reciben credenciales temporales del rol copiadas a un Secret (`cluster-init.sh`) que caducan: sustituir por lectura directa del rol o rotación.
@@ -80,6 +80,11 @@ Estado de ejecución: el PR #1 ya está integrado en `main`. Las marcas anterior
 - [x] Despliegue desde GHCR en lugar de construir en el servidor: `deploy-aws.sh` resuelve la imagen publicada más reciente (`VIBE_IMAGE_TAG` para forzarla) y `cluster-init.sh` delega en `deploy-ghcr.sh`; así cualquier nodo nuevo descarga las imágenes. Se eliminó `build-and-load.sh`.
 - [ ] Primer despliegue real de desarrollo con 1 nodo: comprobar con `kubectl describe node` que el servidor (2 vCPU, 4 GB) tiene holgura con la aplicación (~0,8 vCPU y 0,9 GB pedidos), Traefik y KEDA.
 - [ ] Probar `aws/scale-aws.sh` (subir y bajar agentes) en un entorno real: comprobar que los pods se reparten y que el drain no deja la aplicación caída.
+- [x] Flujo de promoción por PR: `feature/*` → `develop` (desarrollo) → `staging` (staging) → `main` (producción); cada merge despliega en el entorno de su rama (si `AUTO_DEPLOY=true`); si el clúster está apagado avisa y no falla; job `promotion-guard` que obliga a promover en orden.
+- [x] Pruebas de carga didácticas solo en staging: el visor `k8s-web` recibe `--env` y `--api`, ofrece solo Rendimiento y Escalabilidad en staging, bloquea desarrollo y producción, y lanza los ensayos con Python sin `make` (en Windows no existe).
+- [ ] **Leonardo (GitHub):** crear la rama `staging` desde `develop`; rulesets en `develop`, `staging` y `main` que exijan PR y los checks `Orden de promoción` y el CI; *Required reviewers* en los Environments `staging` y `produccion`; los secretos/variables en los tres Environments; y `AUTO_DEPLOY=true` cuando el clúster de desarrollo esté desplegado.
+- [ ] Probar el flujo completo con un cambio visible: PR a `develop` → desarrollo; PR a `staging` → levantar staging, pruebas de carga con el visor; PR a `main` → aprobación y producción.
+- [ ] Instalar `k6` en el PC desde el que se lanzan las pruebas de carga (`winget install k6`).
 
 ### Mejoras siguientes
 - [x] Añadido workflow manual `deploy.yml` para el despliegue por SSM. Falta validar permisos y ejecución real en AWS.
