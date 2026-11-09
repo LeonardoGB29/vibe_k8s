@@ -79,7 +79,7 @@ jobs:
           cache-dependency-path: vibe/services/${{ matrix.service }}/requirements.txt
       - name: Instalar dependencias
         run: |
-          pip install -r vibe/services/${{ matrix.service }}/requirements.txt -r vibe/services/${{ matrix.service }}/tests/requirements-test.txt
+          pip install -r services/${{ matrix.service }}/requirements.txt -r services/${{ matrix.service }}/tests/requirements-test.txt
       - name: Ejecutar pruebas (unitarias e integración)
         working-directory: vibe/services/${{ matrix.service }}
         run: python -m pytest tests -v --junitxml=junit.xml
@@ -334,7 +334,7 @@ jobs:
             --query 'LoadBalancerDescriptions[0].DNSName' --output text)
           echo "url=http://${dns}" >> "$GITHUB_OUTPUT"
       - name: Instalar dependencias de las pruebas
-        run: pip install -r vibe/tests/live/requirements.txt
+        run: pip install -r tests/live/requirements.txt
       - name: Ejecutar pruebas de integración contra desarrollo
         working-directory: vibe
         env:
