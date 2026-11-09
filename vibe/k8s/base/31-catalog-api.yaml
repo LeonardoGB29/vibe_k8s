@@ -85,9 +85,9 @@ spec:
             - name: DB_POOL_TIMEOUT
               value: "5"
             - name: MINIO_ACCESS_KEY
-              valueFrom: { secretKeyRef: { name: vibe-secrets, key: MINIO_ACCESS_KEY } }
+              valueFrom: { secretKeyRef: { name: vibe-secrets, key: MINIO_ACCESS_KEY, optional: true } }
             - name: MINIO_SECRET_KEY
-              valueFrom: { secretKeyRef: { name: vibe-secrets, key: MINIO_SECRET_KEY } }
+              valueFrom: { secretKeyRef: { name: vibe-secrets, key: MINIO_SECRET_KEY, optional: true } }
             - name: MINIO_SESSION_TOKEN
               valueFrom: { secretKeyRef: { name: vibe-secrets, key: MINIO_SESSION_TOKEN, optional: true } }
             - name: POD_NAME

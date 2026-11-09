@@ -11,6 +11,7 @@ MINIO_ACCESS_KEY = env("MINIO_ACCESS_KEY", "vibeadmin")
 MINIO_SECRET_KEY = env("MINIO_SECRET_KEY", "vibesecret123")
 MINIO_SESSION_TOKEN = env("MINIO_SESSION_TOKEN", "") or None
 MINIO_SECURE = env("MINIO_SECURE", "false").lower() == "true"
+MINIO_AUTH = env("MINIO_AUTH", "static")  # "instance-role" = rol de la EC2 (AWS)
 AWS_REGION = env("AWS_REGION", "us-east-2")
 
 BUCKET_HLS = env("BUCKET_HLS", "hls")

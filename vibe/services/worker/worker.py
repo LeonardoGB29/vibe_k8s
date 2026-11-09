@@ -34,6 +34,7 @@ MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "vibeadmin")
 MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "vibesecret123")
 MINIO_SESSION_TOKEN = os.getenv("MINIO_SESSION_TOKEN", "") or None
 MINIO_SECURE = os.getenv("MINIO_SECURE", "false").lower() == "true"
+MINIO_AUTH = os.getenv("MINIO_AUTH", "static")  # "instance-role" = rol de la EC2 (AWS)
 AWS_REGION = os.getenv("AWS_REGION", "us-east-2")
 
 BUCKET_RAW = os.getenv("BUCKET_RAW", "raw")
@@ -66,12 +67,18 @@ r = redis.Redis.from_url(REDIS_URL, decode_responses=True)
 
 _client_kwargs = {
     "endpoint": MINIO_ENDPOINT,
-    "access_key": MINIO_ACCESS_KEY,
-    "secret_key": MINIO_SECRET_KEY,
     "secure": MINIO_SECURE,
 }
-if MINIO_SESSION_TOKEN:
-    _client_kwargs["session_token"] = MINIO_SESSION_TOKEN
+if MINIO_AUTH == "instance-role":
+    # AWS: credenciales temporales del rol de la EC2 (IMDSv2), renovadas solas por el cliente.
+    from minio.credentials import IamAwsProvider
+
+    _client_kwargs["credentials"] = IamAwsProvider()
+else:
+    _client_kwargs["access_key"] = MINIO_ACCESS_KEY
+    _client_kwargs["secret_key"] = MINIO_SECRET_KEY
+    if MINIO_SESSION_TOKEN:
+        _client_kwargs["session_token"] = MINIO_SESSION_TOKEN
 if AWS_REGION:
     _client_kwargs["region"] = AWS_REGION
 

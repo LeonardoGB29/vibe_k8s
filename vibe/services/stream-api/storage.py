@@ -9,12 +9,20 @@ log = logging.getLogger("vibe.stream.storage")
 
 _client_kwargs = {
     "endpoint": config.MINIO_ENDPOINT,
-    "access_key": config.MINIO_ACCESS_KEY,
-    "secret_key": config.MINIO_SECRET_KEY,
     "secure": config.MINIO_SECURE,
 }
-if config.MINIO_SESSION_TOKEN:
-    _client_kwargs["session_token"] = config.MINIO_SESSION_TOKEN
+if config.MINIO_AUTH == "instance-role":
+    # AWS: credenciales temporales del rol de la EC2 (IMDSv2). El cliente las renueva solo antes de
+    # que caduquen, asi que no hay claves ni tokens copiados a ningun Secret.
+    from minio.credentials import IamAwsProvider
+
+    _client_kwargs["credentials"] = IamAwsProvider()
+else:
+    # Local (kind/docker compose) con MinIO: claves estaticas.
+    _client_kwargs["access_key"] = config.MINIO_ACCESS_KEY
+    _client_kwargs["secret_key"] = config.MINIO_SECRET_KEY
+    if config.MINIO_SESSION_TOKEN:
+        _client_kwargs["session_token"] = config.MINIO_SESSION_TOKEN
 if config.AWS_REGION:
     _client_kwargs["region"] = config.AWS_REGION
 

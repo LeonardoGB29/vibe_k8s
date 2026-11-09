@@ -19,3 +19,30 @@ def test_stream_url_solo_para_pistas_listas():
 def test_pistas_en_proceso_no_tienen_stream_url():
     for status in ("pending", "processing", "failed"):
         assert TrackListItem.from_model(_track(status)).stream_url is None
+
+
+def test_storage_usa_el_rol_de_la_instancia_en_aws(monkeypatch):
+    """Con MINIO_AUTH=instance-role el cliente S3 usa el proveedor de credenciales temporales y NO claves fijas."""
+    import importlib
+
+    import config
+    import minio.credentials as mc
+    import storage
+
+    sentinel = object()
+    monkeypatch.setattr(config, "MINIO_AUTH", "instance-role")
+    monkeypatch.setattr(mc, "IamAwsProvider", lambda: sentinel)
+    try:
+        importlib.reload(storage)
+        assert storage._client_kwargs["credentials"] is sentinel
+        assert "access_key" not in storage._client_kwargs and "secret_key" not in storage._client_kwargs
+    finally:
+        monkeypatch.undo()
+        importlib.reload(storage)  # vuelve al modo por defecto (claves estaticas) para el resto de pruebas
+
+
+def test_storage_usa_claves_estaticas_por_defecto():
+    import storage
+
+    assert "credentials" not in storage._client_kwargs
+    assert "access_key" in storage._client_kwargs

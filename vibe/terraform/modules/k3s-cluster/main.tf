@@ -130,6 +130,9 @@ resource "aws_instance" "server" {
   metadata_options {
     http_endpoint = "enabled"
     http_tokens   = "required"
+    # 2 saltos: los pods (un salto mas que el host) pueden leer las credenciales del rol de la
+    # instancia en IMDSv2. Con el valor por defecto (1) quedarian bloqueados.
+    http_put_response_hop_limit = 2
   }
 
   root_block_device {
@@ -173,6 +176,9 @@ resource "aws_instance" "agent" {
   metadata_options {
     http_endpoint = "enabled"
     http_tokens   = "required"
+    # 2 saltos: los pods (un salto mas que el host) pueden leer las credenciales del rol de la
+    # instancia en IMDSv2. Con el valor por defecto (1) quedarian bloqueados.
+    http_put_response_hop_limit = 2
   }
 
   root_block_device {

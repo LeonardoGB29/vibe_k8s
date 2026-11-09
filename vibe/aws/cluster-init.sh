@@ -75,24 +75,12 @@ cd "$REPO_ROOT"
 # Crear namespace si no existe
 kubectl apply -f "k8s/overlays/$VIBE_ENVIRONMENT/namespace.yaml"
 
-# Obtener credenciales temporales del rol de la instancia (modules/node-iam)
-# o usar token de sesión si fue provisto
-TOKEN=$(curl -fsS --max-time 5 -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600" || true)
-ROLE_NAME=$(curl -fsS --max-time 5 -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/iam/security-credentials/ || true)
+# Acceso a S3: los pods usan el rol de la instancia (modules/node-iam) con credenciales
+# temporales que el propio cliente renueva (MINIO_AUTH=instance-role). No se copia ninguna
+# clave ni token a un Secret, asi que no hay nada que caduque ni que se pueda filtrar.
+# Requisito: los nodos permiten que los pods lleguen a IMDSv2 (http_put_response_hop_limit = 2).
 
-if [ -n "$ROLE_NAME" ]; then
-    CREDS=$(curl -fsS --max-time 5 -H "X-aws-ec2-metadata-token: $TOKEN" "http://169.254.169.254/latest/meta-data/iam/security-credentials/$ROLE_NAME")
-    echo "$CREDS" | jq -e '.Code == "Success" and (.AccessKeyId | type == "string") and (.SecretAccessKey | type == "string") and (.Token | type == "string")' >/dev/null
-    AWS_AK=$(echo "$CREDS" | jq -r '.AccessKeyId')
-    AWS_SK=$(echo "$CREDS" | jq -r '.SecretAccessKey')
-    AWS_ST=$(echo "$CREDS" | jq -r '.Token')
-else
-    AWS_AK="${AWS_ACCESS_KEY_ID:?No hay rol EC2 ni AWS_ACCESS_KEY_ID}"
-    AWS_SK="${AWS_SECRET_ACCESS_KEY:?No hay rol EC2 ni AWS_SECRET_ACCESS_KEY}"
-    AWS_ST="${AWS_SESSION_TOKEN:?Indica AWS_SESSION_TOKEN para las credenciales temporales}"
-fi
-
-# Generar ConfigMap y Secret para S3
+# Generar ConfigMap y Secret de la aplicacion
 if kubectl -n "$NAMESPACE" get secret vibe-secrets >/dev/null 2>&1; then
     POSTGRES_PASSWORD="$(kubectl -n "$NAMESPACE" get secret vibe-secrets -o jsonpath='{.data.POSTGRES_PASSWORD}' | base64 --decode)"
 else
@@ -116,6 +104,7 @@ data:
   REDIS_URL: redis://redis:6379/0
   MINIO_ENDPOINT: s3.${AWS_DEFAULT_REGION}.amazonaws.com
   MINIO_SECURE: "true"
+  MINIO_AUTH: instance-role
   AWS_REGION: ${AWS_DEFAULT_REGION}
   BUCKET_RAW: "$RAW_BUCKET"
   BUCKET_HLS: "$HLS_BUCKET"
@@ -134,9 +123,6 @@ stringData:
   POSTGRES_PASSWORD: "$POSTGRES_PASSWORD"
   POSTGRES_DB: vibe
   DATABASE_URL: "${DATABASE_URL}"
-  MINIO_ACCESS_KEY: "$AWS_AK"
-  MINIO_SECRET_KEY: "$AWS_SK"
-  MINIO_SESSION_TOKEN: "$AWS_ST"
 EOF
 
 echo "=== [6/6] Desplegando Postgres, Redis y los 5 Microservicios (overlay $VIBE_ENVIRONMENT, imágenes ${IMAGE_TAG}) ==="
