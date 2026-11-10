@@ -37,7 +37,7 @@ jobs:
         working-directory: vibe/terraform/envs/${{ inputs.target_environment }}
     steps:
       - uses: actions/checkout@v4
-      - uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v4
         with:
           terraform_version: 1.16.6
       - name: init
