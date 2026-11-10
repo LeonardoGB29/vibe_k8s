@@ -11,7 +11,6 @@
   --c3: #7b2ff7;
   --c4: #2dd4ff;
   --grad: linear-gradient(120deg, var(--c1) 0%, var(--c2) 45%, var(--c3) 80%, var(--c4) 110%);
-  --action-grad: linear-gradient(120deg, #1d4ed8, #0e7490);
   --radius: 22px;
   --font-display: "Unbounded", "Arial Black", sans-serif;
   --font-body: "Space Grotesk", system-ui, sans-serif;
@@ -71,7 +70,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   background: var(--surface); border: 1px solid var(--line); border-radius: 999px; padding: 0 18px; height: 52px;
   transition: border-color .2s, background .2s;
 }
-.search:focus-within { border-color: var(--c4); background: var(--surface-2); }
+.search:focus-within { border-color: var(--c2); background: var(--surface-2); }
 .search svg { color: var(--muted); flex: none; }
 .search input { flex: 1; background: transparent; border: 0; outline: 0; height: 100%; font-size: 16px; }
 .search input::placeholder { color: var(--muted); }
@@ -84,7 +83,7 @@ svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width:
   transition: transform .12s ease, filter .2s ease, background .2s;
 }
 .btn:active { transform: scale(0.97); }
-.btn-primary { background: var(--action-grad); color: #fff; box-shadow: 0 8px 28px rgba(29, 78, 216, 0.35); }
+.btn-primary { background: var(--grad); color: #fff; box-shadow: 0 8px 28px rgba(255, 45, 149, 0.35); }
 .btn-primary:hover { filter: brightness(1.08); }
 .btn-ghost { background: var(--surface); border-color: var(--line); }
 .btn-ghost:hover { background: var(--surface-2); }
@@ -116,14 +115,14 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin
   background: var(--surface); color: var(--muted); font-weight: 500;
 }
 .chip:hover { color: var(--text); background: var(--surface-2); }
-.chip.is-active { color: #fff; background: var(--action-grad); border-color: transparent; }
+.chip.is-active { color: #fff; background: var(--grad); border-color: transparent; }
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 18px; }
 .card {
   position: relative; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
   padding: 14px; transition: transform .18s ease, background .2s, border-color .2s;
 }
-.card:hover { transform: translateY(-3px); background: var(--surface-2); border-color: rgba(45, 212, 255, 0.45); }
+.card:hover { transform: translateY(-3px); background: var(--surface-2); border-color: rgba(255,255,255,0.18); }
 .card.is-playing { border-color: var(--c2); box-shadow: 0 0 0 1px var(--c2), 0 10px 40px rgba(255, 45, 149, 0.25); }
 .card-cover {
   aspect-ratio: 1; border-radius: 16px; display: grid; place-items: center; position: relative; overflow: hidden;
@@ -175,8 +174,8 @@ h2 { font-family: var(--font-display); font-weight: 700; font-size: 22px; margin
 .ctl { width: 46px; height: 46px; border-radius: 50%; border: 1px solid var(--line); background: var(--surface); display: grid; place-items: center; transition: .15s; }
 .ctl:hover { background: var(--surface-2); }
 .ctl svg { width: 22px; height: 22px; fill: currentColor; stroke: none; }
-.ctl-play { width: 60px; height: 60px; border: 0; background: var(--action-grad); color: #fff; box-shadow: 0 8px 26px rgba(29, 78, 216, 0.28); }
-.ctl-play:hover { filter: brightness(1.12); }
+.ctl-play { width: 60px; height: 60px; border: 0; background: #fff; color: #0b0713; box-shadow: 0 8px 26px rgba(255,255,255,0.18); }
+.ctl-play:hover { background: #fff; filter: brightness(1.05); }
 .ctl-play .ico-play { margin-left: 3px; }
 .ctl-play .ico-pause { display: none; }
 .player.is-playing .ico-play { display: none; }
