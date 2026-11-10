@@ -31,5 +31,17 @@ patches:
       kind: StatefulSet
       metadata:
         name: postgres
+  # Demo de escalado: stream-api sirve audio (espera de I/O, poca CPU). Con el umbral de la base (60%)
+  # el HPA no reacciona a las pruebas de k6; con 30% crea pods en cuanto la carga sube y, cuando no
+  # caben, aparecen Pending y el Cluster Autoscaler añade agentes en AWS.
+  - target:
+      group: autoscaling
+      version: v2
+      kind: HorizontalPodAutoscaler
+      name: stream-api-hpa
+    patch: |-
+      - op: replace
+        path: /spec/metrics/0/resource/target/averageUtilization
+        value: 30
   # Pruebas de carga: los HPA/KEDA usan los techos de la base (8-10 pods por API, 30 workers).
   # Los pods que no caben quedan Pending y el Cluster Autoscaler añade agentes (terraform: agent_max).
